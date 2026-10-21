@@ -85,10 +85,10 @@ local Library = {
 
     IsLightTheme = false,
     Scheme = {
-        BackgroundColor = Color3.fromRGB(15, 15, 15),
-        MainColor = Color3.fromRGB(25, 25, 25),
-        AccentColor = Color3.fromRGB(125, 85, 255),
-        OutlineColor = Color3.fromRGB(40, 40, 40),
+        BackgroundColor = Color3.fromRGB(27, 27, 27), -- #1B1B1B
+        MainColor = Color3.fromRGB(34, 34, 34), -- #222222
+        AccentColor = Color3.fromRGB(0, 199, 192), -- #00C7C0
+        OutlineColor = Color3.fromRGB(46, 46, 46), -- #2E2E2E
         FontColor = Color3.new(1, 1, 1),
         Font = Font.fromEnum(Enum.Font.Code),
 
@@ -253,13 +253,14 @@ local Templates = {
         Title = "No Title",
         Footer = "No Footer",
         Position = UDim2.fromOffset(6, 6),
-        Size = UDim2.fromOffset(720, 600),
+        Size = UDim2.fromOffset(640, 520),
         IconSize = UDim2.fromOffset(30, 30),
         AutoShow = true,
         Center = true,
         Resizable = true,
         SearchbarSize = UDim2.fromScale(1, 1),
-        CornerRadius = 4,
+        CornerRadius = 6,
+        AccentTopBar = true,
         NotifySide = "Right",
         ShowCustomCursor = true,
         Font = Enum.Font.Code,
@@ -5308,7 +5309,7 @@ do
             })
 
             DepboxList = New("UIListLayout", {
-                Padding = UDim.new(0, 8),
+                Padding = UDim.new(0, 5),
                 Parent = DepboxContainer,
             })
         end
@@ -5415,14 +5416,14 @@ do
             })
 
             DepGroupboxList = New("UIListLayout", {
-                Padding = UDim.new(0, 8),
+                Padding = UDim.new(0, 5),
                 Parent = DepGroupboxContainer,
             })
             New("UIPadding", {
-                PaddingBottom = UDim.new(0, 7),
-                PaddingLeft = UDim.new(0, 7),
-                PaddingRight = UDim.new(0, 7),
-                PaddingTop = UDim.new(0, 7),
+                PaddingBottom = UDim.new(0, 5),
+                PaddingLeft = UDim.new(0, 6),
+                PaddingRight = UDim.new(0, 6),
+                PaddingTop = UDim.new(0, 5),
                 Parent = DepGroupboxContainer,
             })
         end
@@ -5868,12 +5869,12 @@ function Library:CreateWindow(WindowInfo)
         do
            local Lines = {
 				{
-					Position = UDim2.fromOffset(0, 48),
+					Position = UDim2.fromOffset(0, 40),
 					Size = UDim2.new(1, 0, 0, 1),
 				},
 				{
-					Position = UDim2.fromScale(0.3, 0.08),
-					Size = UDim2.new(0, 1, 0.95, -21),
+					Position = UDim2.fromScale(0.3, 0.5),
+					Size = UDim2.new(0, 1, 1, -40),
 				},
 				{
 					AnchorPoint = Vector2.new(0, 1),
@@ -5906,9 +5907,16 @@ function Library:CreateWindow(WindowInfo)
 
         --// Top Bar \\-
         local TopBar = New("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 48),
+            BackgroundColor3 = "AccentColor",
+            BackgroundTransparency = WindowInfo.AccentTopBar and 0 or 1,
+            BorderSizePixel = 0,
+            Name = "TopBar",
+            Size = UDim2.new(1, 0, 0, 40),
             Parent = MainFrame,
+        })
+        New("UICorner", {
+            CornerRadius = UDim.new(0, WindowInfo.CornerRadius - 1),
+            Parent = TopBar,
         })
         Library:MakeDraggable(MainFrame, TopBar, false, true)
 
@@ -5926,7 +5934,7 @@ function Library:CreateWindow(WindowInfo)
             Parent = TitleHolder,
         })
         New("UIPadding", {
-            PaddingLeft = UDim.new(0, 8),
+            PaddingLeft = UDim.new(0, 10),
             Parent = TitleHolder,
         })
 
@@ -5942,14 +5950,16 @@ function Library:CreateWindow(WindowInfo)
 		local X = Library:GetTextBounds(
 			WindowInfo.Title,
 			Library.Scheme.Font,
-			20,
+			18,
 			TitleHolder.AbsoluteSize.X - (WindowInfo.Icon and WindowInfo.IconSize.X.Offset + 6 or 0) - 12
 		)
         New("TextLabel", {
             BackgroundTransparency = 1,
             Size = UDim2.new(0, X, 1, 0),
             Text = WindowInfo.Title,
-            TextSize = 20,
+            TextColor3 = "BackgroundColor",
+            FontFace = Font.fromEnum(Enum.Font.GothamBold),
+            TextSize = 17,
             Parent = TitleHolder,
         })
 
@@ -6015,26 +6025,34 @@ function Library:CreateWindow(WindowInfo)
         })
 
         SearchBox = New("TextBox", {
-            BackgroundColor3 = "MainColor",
-            PlaceholderText = "Search",
+            BackgroundColor3 = function()
+                return Library:GetBetterColor(Library.Scheme.BackgroundColor, 2)
+            end,
+            PlaceholderText = "Search  (ctrl+f)",
+            PlaceholderColor3 = function()
+                return Library:GetBetterColor(Library.Scheme.AccentColor, 12)
+            end,
+            FontFace = Font.fromEnum(Enum.Font.Gotham),
             Size = WindowInfo.SearchbarSize,
             TextScaled = true,
+            TextColor3 = "FontColor",
             Visible = not (WindowInfo.DisableSearch or false),
             Parent = RightWrapper,
         })
         New("UICorner", {
-            CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+            CornerRadius = UDim.new(0, WindowInfo.CornerRadius - 2),
             Parent = SearchBox,
         })
         New("UIPadding", {
-            PaddingBottom = UDim.new(0, 8),
-            PaddingLeft = UDim.new(0, 8),
-            PaddingRight = UDim.new(0, 8),
-            PaddingTop = UDim.new(0, 8),
+            PaddingBottom = UDim.new(0, 6),
+            PaddingLeft = UDim.new(0, 6),
+            PaddingRight = UDim.new(0, 6),
+            PaddingTop = UDim.new(0, 6),
             Parent = SearchBox,
         })
         New("UIStroke", {
-            Color = "OutlineColor",
+            Color = "BackgroundColor",
+            Transparency = 0.35,
             Parent = SearchBox,
         })
 
@@ -6042,10 +6060,10 @@ function Library:CreateWindow(WindowInfo)
         if SearchIcon then
             New("ImageLabel", {
                 Image = SearchIcon.Url,
-                ImageColor3 = "FontColor",
+                ImageColor3 = "BackgroundColor",
                 ImageRectOffset = SearchIcon.ImageRectOffset,
                 ImageRectSize = SearchIcon.ImageRectSize,
-                ImageTransparency = 0.5,
+                ImageTransparency = 0.2,
                 Size = UDim2.fromScale(1, 1),
                 SizeConstraint = Enum.SizeConstraint.RelativeYY,
                 Parent = SearchBox,
@@ -6137,9 +6155,9 @@ function Library:CreateWindow(WindowInfo)
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             BackgroundColor3 = "BackgroundColor",
             CanvasSize = UDim2.fromScale(0, 0),
-            Position = UDim2.fromOffset(0, 49),
+            Position = UDim2.fromOffset(0, 41),
             ScrollBarThickness = 0,
-            Size = UDim2.new(0.3, 0, 1, -70),
+            Size = UDim2.new(0.3, 0, 1, -62),
             Parent = MainFrame,
         })
 
@@ -6154,8 +6172,8 @@ function Library:CreateWindow(WindowInfo)
                 return Library:GetBetterColor(Library.Scheme.BackgroundColor, 1)
             end,
             Name = "Container",
-            Position = UDim2.new(1, 0, 0, 49),
-            Size = UDim2.new(0.7, -1, 1, -70),
+            Position = UDim2.new(1, 0, 0, 41),
+            Size = UDim2.new(0.7, -1, 1, -62),
             Parent = MainFrame,
         })
 
@@ -6547,14 +6565,14 @@ function Library:CreateWindow(WindowInfo)
                 })
 
                 GroupboxList = New("UIListLayout", {
-                    Padding = UDim.new(0, 8),
+                    Padding = UDim.new(0, 5),
                     Parent = GroupboxContainer,
                 })
                 New("UIPadding", {
-                    PaddingBottom = UDim.new(0, 7),
-                    PaddingLeft = UDim.new(0, 7),
-                    PaddingRight = UDim.new(0, 7),
-                    PaddingTop = UDim.new(0, 7),
+                    PaddingBottom = UDim.new(0, 5),
+                    PaddingLeft = UDim.new(0, 6),
+                    PaddingRight = UDim.new(0, 6),
+                    PaddingTop = UDim.new(0, 5),
                     Parent = GroupboxContainer,
                 })
             end
@@ -6674,14 +6692,14 @@ function Library:CreateWindow(WindowInfo)
                     Parent = TabboxHolder,
                 })
                 local List = New("UIListLayout", {
-                    Padding = UDim.new(0, 8),
+                    Padding = UDim.new(0, 5),
                     Parent = Container,
                 })
                 New("UIPadding", {
-                    PaddingBottom = UDim.new(0, 7),
-                    PaddingLeft = UDim.new(0, 7),
-                    PaddingRight = UDim.new(0, 7),
-                    PaddingTop = UDim.new(0, 7),
+                    PaddingBottom = UDim.new(0, 5),
+                    PaddingLeft = UDim.new(0, 6),
+                    PaddingRight = UDim.new(0, 6),
+                    PaddingTop = UDim.new(0, 5),
                     Parent = Container,
                 })
 
@@ -6902,7 +6920,7 @@ function Library:CreateWindow(WindowInfo)
             })
             New("UIListLayout", {
                 HorizontalAlignment = Enum.HorizontalAlignment.Center,
-                Padding = UDim.new(0, 8),
+                Padding = UDim.new(0, 5),
                 VerticalAlignment = Enum.VerticalAlignment.Center,
                 Parent = TabContainer,
             })

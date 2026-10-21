@@ -85,3 +85,50 @@ survives across devices — a new session reads this to see what's already done.
   Only remaining git.fable.bz mention in `Tagged` is a non-executed comment on line ~3872.
 - **Status:** done
 - **Next:** begin UI work — first change the default accent from red to teal `#00C7C0`.
+
+## [2026-10-22] Big UI overhaul + accent picker + font changer + leaderboard stealth + Path Editor
+- **File(s):** `Tagged`, `backup/DEPENDENCIES/Library.lua`,
+  `backup/DEPENDENCIES/ThemeManager.lua`, `backup/DEPENDENCIES/Chatlogger.lua`
+- **What changed:**
+  - **Accent → teal.** `shared.theme.accent` is now `Color3.fromRGB(0,199,192)`
+    (`#00C7C0`) instead of red. The library's own default scheme matches
+    (Background `#1B1B1B`, Main `#222222`, Accent `#00C7C0`, Outline `#2E2E2E`) so
+    the look is right even before the theme manager runs.
+  - **Live accent picker.** Added `applyAccent(color)` in `Tagged` (wires to
+    `utility:ChangeAccent`, `library.Scheme.AccentColor` and
+    `library:UpdateColorsUsingRegistry()`). An `AccentColor` ColorPicker now sits at
+    the top of Interface ▸ UI Settings. Persists via SaveManager.
+  - **Font changer.** New `UIFont` dropdown in Interface ▸ UI Settings with ~38 Roblox
+    fonts; drives `library:SetFont(Enum.Font[...])`. The library already applies
+    `FontFace = "Font"` through the colour registry, so it restyles every element live.
+  - **UI scale slider.** `UIScale` (70–110%, default 90) calls `library:SetDPIScale`.
+  - **Accent top bar.** The window's top bar is now a slim (40px, was 48px)
+    accent-coloured bar with rounded corners and a bold dark title. It is the drag
+    handle (`Library:MakeDraggable(MainFrame, TopBar, ...)`), so the whole window moves
+    by holding the accent bar — same feel as the rest of the UI. Named `TopBar`; a
+    toggle `AccentTopBar` in Interface turns it on/off.
+  - **Compact + neater.** Window default 640×520 (was 720×600), corner radius 6,
+    list/padding spacing tightened (8→5, container padding 7→5, groupbox header
+    trimmed), tabs/container start at y=41 with matching heights, search box restyled
+    and labelled `Search (ctrl+f)`.
+  - **Leaderboard stealth.** New toggle `neutral_leaderboard` ("Hide Leaderboard
+    Colours") in Visuals ▸ Overlays. When on, every leaderboard name renders plain white
+    instead of the class/observe/MaxEdict colours, so the colour tells give nothing
+    away. Observe (right-click a name) and the hover class readout still work — only the
+    giveaway colours are hidden. Wired into `updatePlayerLabel` and persisted in
+    `cheat_client.config.neutral_leaderboard`.
+  - **Path Editor tab.** New `Path Editor` tab (icon `route`) with four groupboxes:
+    Path Points, Edit Point, Path Files, Run/Debug. List/select points, select-nearest,
+    move a point to you, insert at end, reorder up/down, delete, clear; edit wait time /
+    gate location / is-gate / wait-for-trinket and apply to the selected point; locally
+    teleport to a point; save / load / duplicate / rename / delete / refresh paths. Run
+    Path (test/real) and Stop Bot included, plus an optional 3s auto-refresh of the point
+    list. It reuses the existing trinket-bot file format via a new `cheat_client.path_api`
+    bridge instead of duplicating the loader.
+  - **Rebrand leftovers fixed.** `ThemeManager.Folder` `HYDROXIDELib` → `TaggedLib`;
+    added a built-in `Tagged` theme (teal) and set it as the default; `Chatlogger` paths
+    `HYDROXIDE/...` → `Tagged/...`, highlight word `hydroxide` → `tagged`, and the
+    "What's hydroxide.solutions?" response → "What's Tagged?".
+- **Status:** done (syntax-validated with the Luau compiler; pending in-game test)
+- **Next:** in-game test pass — verify accent-bar dragging, font changer, neutral
+  leaderboard and the Path Editor save/load round-trip on the executor.

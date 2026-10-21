@@ -36,12 +36,19 @@ end
 
 local ThemeManager = {}
 do
-    ThemeManager.Folder = "HYDROXIDELib"
+    ThemeManager.Folder = "TaggedLib"
+    ThemeManager.DefaultTheme = "Tagged"
     -- if not isfolder(ThemeManager.Folder) then makefolder(ThemeManager.Folder) end
 
     ThemeManager.Library = nil
     ThemeManager.AppliedToTab = false
     ThemeManager.BuiltInThemes = {
+        ["Tagged"] = {
+            0,
+            httpService:JSONDecode(
+                [[{"MainColor":"222222","FontFace":"Code","AccentColor":"00c7c0","OutlineColor":"2e2e2e","BackgroundColor":"1b1b1b","FontColor":"ffffff"}]]
+            ),
+        },
         ["Default"] = {
             1,
             httpService:JSONDecode(

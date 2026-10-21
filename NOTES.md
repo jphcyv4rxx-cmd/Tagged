@@ -29,14 +29,17 @@ The user is rebranding it to "Tagged" and improving the UI.
 
 ## Goals (what the user wants)
 1. **Rename** everything hydroxide → Tagged. ✅ DONE (see CHANGELOG).
-2. **Compact the UI** so it's less spread out.
+2. **Compact the UI** so it's less spread out. ✅ DONE (2026-10-22).
 3. **User-changeable accent color** — a live color picker so the user can pick the
-   accent themselves.
+   accent themselves. ✅ DONE (2026-10-22).
 4. **Match a reference look** (dark grey panels + bright teal accent, sampled from a
-   video the user linked — colors recorded below).
+   video the user linked — colors recorded below). ✅ DONE (teal default).
 5. **Search bar** that finds features by greying everything out and jumping/redirecting
-   to the match. (NOTE: the UI library ALREADY has this — `Library:UpdateSearch`.
-   Verify it does what's wanted before building anything new.)
+   to the match. ✅ Already existed in the library; relabelled to `Search (ctrl+f)`.
+6. **Font changer + UI scale + accent top bar** (2026-10-22). ✅ DONE.
+7. **Leaderboard stealth** — hide the class/observe colours, show plain names, keep
+   right-click observe. ✅ DONE (2026-10-22).
+8. **Path Editor** — build your own bot paths. ✅ DONE (2026-10-22).
 
 ## Files in this repo
 - `Tagged` — **the deliverable script** (full rogue_ui.lua, ~27,282 lines, renamed).
@@ -72,26 +75,44 @@ The user is rebranding it to "Tagged" and improving the UI.
 ## Reference UI look (sampled pixel-accurately from user's screenshots)
 - Panels: very dark grey — `#222222` / `#1B1B1B`.
 - Accent: bright teal/cyan — approx **`#00C7C0`** (`Color3.fromRGB(0, 199, 192)`).
-- The script's accent is currently RED (`Color3.fromRGB(255,0,0)`) — **needs to become teal.**
+- The script's accent default is now TEAL (`Color3.fromRGB(0,199,192)` / `#00C7C0`),
+  changeable at runtime via the `AccentColor` picker in Interface ▸ UI Settings.
 - Key locations in `Tagged`:
-  - Theme table w/ accent: search `accent = Color3.fromRGB(255,0,0)` (~line 364).
+  - Theme table w/ accent: search `accent = Color3.fromRGB(0,199,192)` (~line 364).
   - `utility:ChangeAccent(accentColor)`: ~line 2328 — updates `shared.accents` drawings.
-  - Window creation (`library:CreateWindow`): ~line 7421. `DisableSearch = false` there
+  - `applyAccent(color)` helper: defined near the theme table; used by the picker.
+  - Window creation (`library:CreateWindow`): ~line 7450. `DisableSearch = false` there
     means the search bar is ENABLED.
+  - Path Editor tab block: `--// Path Editor \\--` (~line 19676).
+  - `cheat_client.path_api` bridge: end of the trinket-bot block (~line 18458).
 
 ## Current state
 - Renaming COMPLETE and pushed to GitHub.
 - **Self-hosting COMPLETE** — script + all runtime deps now live on THIS repo, no
   dependency on zyu's git.fable.bz. Repo is PUBLIC; loadstring is in README.
-- UI work (compact + accent picker + teal) NOT yet started.
+- **UI overhaul COMPLETE** (2026-10-22): accent is now teal `#00C7C0`, with a live
+  accent ColorPicker, a `UIFont` dropdown (~38 fonts), a `UIScale` slider (70–110%),
+  and a slim 40px accent top bar that also drags the window. Layout is more compact
+  (640×520 default, tighter padding/spacing, restyled search box).
+- **Leaderboard stealth COMPLETE** (2026-10-22): `neutral_leaderboard` toggle in
+  Visuals ▸ Overlays — Hides the class/observe colours on the leaderboard and shows
+  plain white names; right-click observe + hover class readout still work.
+- **Path Editor COMPLETE** (2026-10-22): dedicated `Path Editor` tab (points list,
+  edit point, path file save/load/duplicate/rename/delete, run/stop, auto-refresh).
+  Reuses the trinket bot via `cheat_client.path_api`.
+- All changes syntax-validated with the Luau compiler; in-game test still pending.
 
 ## TODO / next steps (in order)
-- [ ] 1. Change default accent from red → teal `#00C7C0`.
-- [ ] 2. Add a live accent color picker (wire to `utility:ChangeAccent`, persist w/ SaveManager).
-- [ ] 3. Compact the UI. Layout lives in `backup/DEPENDENCIES/Library.lua` — compaction
-       can be done via `Library:SetDPIScale(<100)` before `CreateWindow`, or by patching
-       the library directly (now that we self-host it, patching IS an option).
-- [ ] 4. Verify the search bar already greys-out + jumps to matches; tune if needed.
+- [x] 1. Change default accent from red → teal `#00C7C0`.
+- [x] 2. Add a live accent color picker (wire to `utility:ChangeAccent`, persist w/ SaveManager).
+- [x] 3. Compact the UI (patched `backup/DEPENDENCIES/Library.lua` directly: window size,
+       corner radius, paddings, top bar height, tab/container offsets).
+- [x] 4. Verify the search bar already greys-out + jumps to matches (it does; relabelled
+       to `Search  (ctrl+f)`).
+- [ ] 5. In-game test pass on the executor: accent-bar drag, font changer, neutral
+       leaderboard, Path Editor save/load round-trip.
+- [ ] 6. (Optional, deferred) Add a `LUA` point type to the Path Editor, per the spec the
+       user dropped in `lua-action.md` (runs a Lua file from `Tagged/trinket_paths/lua/`).
 
 ## Deleted on purpose (DO NOT re-add)
 - `hydroxide_original.lua` — the unmodified original. User asked to delete it from

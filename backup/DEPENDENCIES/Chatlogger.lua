@@ -1,4 +1,4 @@
--- wait what. Hydroxide chat logger semi open source? Thx to Phrax.
+-- wait what. Tagged chat logger semi open source? Thx to Phrax.
 local TextChatService = game:GetService("TextChatService")
 local Players = game:GetService("Players")
 local CoreGui = cloneref(game:GetService("CoreGui"))
@@ -25,7 +25,7 @@ local HIGHLIGHT_WORDS = {
 	"reported",
 	"ban",
 	"blacklisted",
-	"hydroxide"
+	"tagged"
 }
 local HIGHLIGHT_COLOR = Color3.fromRGB(255, 100, 100)
 
@@ -168,7 +168,7 @@ function LoggerGui.new(cheat_client, utility)
 	addStroke(mainFrame, 1, 0.75)
 	addCorner(mainFrame, 8)
 
-	local chatlogger_data_file = "HYDROXIDE/bin/chatlogger_data.json"
+	local chatlogger_data_file = "Tagged/bin/chatlogger_data.json"
 	if isfile and readfile and isfile(chatlogger_data_file) then
 		local success, data = pcall(function()
 			return HttpService:JSONDecode(readfile(chatlogger_data_file))
@@ -201,7 +201,7 @@ function LoggerGui.new(cheat_client, utility)
 
 			if writefile and HttpService then
 				pcall(function()
-					if not isfolder("HYDROXIDE") then makefolder("HYDROXIDE") end
+					if not isfolder("Tagged") then makefolder("Tagged") end
 					writefile(chatlogger_data_file, HttpService:JSONEncode(data))
 				end)
 			end
@@ -322,9 +322,9 @@ function LoggerGui.new(cheat_client, utility)
 	addCorner(saveButton, 4)
 
 	utility:Connection(saveButton.MouseButton1Click, function()
-		if not isfolder("HYDROXIDE/Chatlogs") then
+		if not isfolder("Tagged/Chatlogs") then
 			local folderSuccess, folderErr = pcall(function()
-				makefolder("HYDROXIDE/Chatlogs")
+				makefolder("Tagged/Chatlogs")
 			end)
 			if not folderSuccess then
 				warn("Could not create folder: " .. tostring(folderErr))
@@ -338,13 +338,13 @@ function LoggerGui.new(cheat_client, utility)
 			table.insert(lines, msgLabel.Text)
 		end
 		local content = table.concat(lines, "\n")
-		local fileName = "HYDROXIDE/Chatlogs/HYDROXIDE Chatlog_" .. date .. "-" .. time .. ".txt"
+		local fileName = "Tagged/Chatlogs/Tagged Chatlog_" .. date .. "-" .. time .. ".txt"
 
 		local success, err = pcall(function()
 			writefile(fileName, content)
 		end)
 		if success then
-			warn("Chat log saved as HYDROXIDE/Chatlogs/HYDROXIDE Chatlog.txt")
+			warn("Chat log saved as Tagged/Chatlogs/Tagged Chatlog.txt")
 		else
 			warn("Could not write file: " .. tostring(err))
 		end
@@ -510,7 +510,7 @@ function LoggerGui.new(cheat_client, utility)
 		"I'm flattered you'd assume I'm a bot. Sadly for your hypothesis, the reality is far more inconvenient—I'm simply optimized beyond your comprehension.",
 		"A bot? No, just a human with above-average reaction time and below-average tolerance for mediocrity.",
 		"Not a bot, just built different. Literally and figuratively.",
-		"What's hydroxide.solutions?"
+		"What's Tagged?"
 	}
 
 	local triggers = {
