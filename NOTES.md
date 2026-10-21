@@ -45,6 +45,9 @@ The user is rebranding it to "Tagged" and improving the UI.
   even though at runtime the script fetches its own copy from the network.
 - `NOTES.md` — this file (current state + goals + AI instructions).
 - `CHANGELOG.md` — ordered log of every change made, oldest → newest.
+- `AGENTS.md` — rules for ANY AI agent (auto-read by coding tools). Tells every AI to
+  read the memory files, auto-commit + push, and respect the hard constraints.
+- `README.md` — short pointer to AGENTS.md / NOTES.md / CHANGELOG.md.
 
 ## ⚠️ CRITICAL facts about the script (DO NOT BREAK THESE)
 - `Tagged` loads its UI library at RUNTIME via HttpGet from

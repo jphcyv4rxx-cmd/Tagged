@@ -54,3 +54,16 @@ survives across devices — a new session reads this to see what's already done.
   this repo does, so these two files carry the project memory between machines.
 - **Status:** done
 - **Next:** begin UI work — first change the default accent from red to teal `#00C7C0`.
+
+## [2026-10-21] Added agent instructions (AGENTS.md + README.md)
+- **File(s):** `AGENTS.md` (created), `README.md` (created)
+- **What changed:** Created `AGENTS.md` — a file that ANY AI coding agent (OpenCode,
+  Claude Code, Codex, Copilot, Aider, Cursor...) will auto-read, containing the rules:
+  read NOTES.md + CHANGELOG.md on session start, auto-commit + push every chunk of work
+  (verify the push landed, don't assume), and the hard constraints (never break the
+  git.fable.bz runtime URL, never re-add deleted files, keep the repo private). Added
+  `README.md` pointing to AGENTS.md, NOTES.md, and CHANGELOG.md so the system is
+  discoverable. Purpose: the user wants updates pushed automatically from any AI on any
+  device, not just a single chat session.
+- **Status:** done
+- **Next:** begin UI work — first change the default accent from red to teal `#00C7C0`.
