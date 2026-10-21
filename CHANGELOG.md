@@ -175,3 +175,31 @@ survives across devices — a new session reads this to see what's already done.
   old *and* new builds, so a stale cached copy can no longer crash the script.
 - **Status:** done
 - **Next:** reload in-game; the title/search bar should render with correct colours.
+
+## [2026-10-22] Fix ColorPicker API + path-dropdown selection (UI now builds past settings)
+- **File(s):** `Tagged`
+- **What changed:** Two real API bugs found by auditing against the library:
+  - **`AddColorPicker` was called on the groupbox**, but in this library build colour
+    pickers attach to **labels** — `AddColorPicker` lives in `BaseAddons` (alongside
+    `AddKeyPicker`), not `BaseGroupbox`. Changed to the existing project pattern:
+    `group_ui:AddLabel("Accent Color"):AddColorPicker("AccentColor", {...})` (that is how
+    the skin/dye/RLFace pickers already work). Also added `Title` and dropped `Changed`
+    (the library fires `Callback` and `Changed` at the same point, so both was redundant).
+  - **Path Editor point dropdown was broken.** `Dropdown.Values` is an **array** and
+    `SetValue` matches with `table.find`, so passing a numeric index never selected
+    anything; worse, the callback did `tonumber(value)` on a label like
+    `"1. (10, 20, 30)"`, which is `nil`, silently clearing the selection on every
+    refresh. Now builds a `label -> index` map plus an `index -> label` map, selects by
+    label string, and uses a `refreshing` guard so `SetValues`/`SetValue` firing the
+    callback cannot wipe the user's selection.
+  - **Option-ID collision removed.** The editor reused `PointWaitTime`, which the
+    trinket bot already registers (line ~16468); creating it again would orphan the
+    bot's widget. Renamed the editor's four options to `PathEditWaitTime`,
+    `PathEditGateLocation`, `PathEditIsGate`, `PathEditWaitTrinket`.
+- **Also audited:** every `:Add*`/`:Set*` method used in the new Path Editor + UI
+  Settings blocks checked against the real `BaseGroupbox`/`BaseAddons` method lists (all
+  valid); tab/groupbox icons verified to degrade gracefully on unknown names (`if Icon
+  then` / `if BoxIcon then` guards), so the `route` icon is safe.
+- **Status:** done (Luau-validated)
+- **Next:** reload in-game and confirm the Interface tab renders, then exercise the
+  Path Editor point selection.

@@ -19686,6 +19686,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 selected_index = nil,
                 points = {},
                 name = "",
+                labels = {},
+                by_index = {},
+                refreshing = false,
             }
             cheat_client.path_editor = path_editor
 
@@ -19739,6 +19742,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             local function refresh_points_dropdown()
                 local values = {}
+                local labels = {}
+                local by_index = {}
                 local points = get_points()
                 for i, point in ipairs(points) do
                     local tag = ""
@@ -19750,12 +19755,24 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         tag = string.format("  [%gs]", point.wait_time)
                     end
 
-                    values[i] = string.format("%d. (%.0f, %.0f, %.0f)%s", i, point.position.X, point.position.Y, point.position.Z, tag)
+                    local label = string.format("%d. (%.0f, %.0f, %.0f)%s", i, point.position.X, point.position.Y, point.position.Z, tag)
+                    values[i] = label
+                    labels[label] = i
+                    by_index[i] = label
                 end
 
+                -- The dropdown stores an ARRAY of labels, so selection is tracked by
+                -- label string (not the numeric index). Keep both maps around.
+                path_editor.labels = labels
+                path_editor.by_index = by_index
+
                 if Options.GeneratedPointList then
+                    -- SetValues/SetValue both fire the callback; suppress it so a refresh
+                    -- does not wipe the user's current selection.
+                    path_editor.refreshing = true
                     Options.GeneratedPointList:SetValues(values)
-                    Options.GeneratedPointList:SetValue(path_editor.selected_index)
+                    Options.GeneratedPointList:SetValue(by_index[path_editor.selected_index])
+                    path_editor.refreshing = false
                 end
             end
 
@@ -19766,17 +19783,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 local point = points[path_editor.selected_index]
-                if Options.PointWaitTime then
-                    Options.PointWaitTime:SetValue(tostring(point.wait_time or 0))
+                if Options.PathEditWaitTime then
+                    Options.PathEditWaitTime:SetValue(tostring(point.wait_time or 0))
                 end
-                if Options.PointGateLocation then
-                    Options.PointGateLocation:SetValue(point.gate_location or "")
+                if Options.PathEditGateLocation then
+                    Options.PathEditGateLocation:SetValue(point.gate_location or "")
                 end
-                if Toggles.PointWaitTrinket then
-                    Toggles.PointWaitTrinket:SetValue(point.wait_for_trinket or false)
+                if Toggles.PathEditWaitTrinket then
+                    Toggles.PathEditWaitTrinket:SetValue(point.wait_for_trinket or false)
                 end
-                if Toggles.PointIsGate then
-                    Toggles.PointIsGate:SetValue(point.is_gate_point or false)
+                if Toggles.PathEditIsGate then
+                    Toggles.PathEditIsGate:SetValue(point.is_gate_point or false)
                 end
             end
 
@@ -19789,8 +19806,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Searchable = false,
                 Default = nil,
                 Callback = function(value)
-                    path_editor.selected_index = tonumber(value)
-                    apply_editor_fields()
+                    if path_editor.refreshing then
+                        return
+                    end
+
+                    if not value then
+                        path_editor.selected_index = nil
+                        return
+                    end
+
+                    local idx = path_editor.labels and path_editor.labels[value]
+                    path_editor.selected_index = idx
+                    if idx then
+                        apply_editor_fields()
+                    end
                 end
             })
 
@@ -19873,7 +19902,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     table.insert(points, {
                         position = plr.Character.HumanoidRootPart.Position,
                         wait_for_trinket = false,
-                        wait_time = tonumber(Options.PointWaitTime and Options.PointWaitTime.Value or "0") or 0,
+                        wait_time = tonumber(Options.PathEditWaitTime and Options.PathEditWaitTime.Value or "0") or 0,
                         is_gate_point = false,
                     })
                     refresh_points_dropdown()
@@ -19954,7 +19983,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
 
             --// Left lower: edit the selected point \\--
-            group_path_edit:AddInput("PointWaitTime", {
+            group_path_edit:AddInput("PathEditWaitTime", {
                 Default = "0",
                 Numeric = true,
                 Finished = false,
@@ -19963,7 +19992,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Placeholder = "0"
             })
 
-            group_path_edit:AddInput("PointGateLocation", {
+            group_path_edit:AddInput("PathEditGateLocation", {
                 Default = "",
                 Numeric = false,
                 Finished = false,
@@ -19972,12 +20001,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Placeholder = "e.g. Tundra 7"
             })
 
-            group_path_edit:AddToggle("PointIsGate", {
+            group_path_edit:AddToggle("PathEditIsGate", {
                 Text = "Is Gate Point",
                 Default = false,
             })
 
-            group_path_edit:AddToggle("PointWaitTrinket", {
+            group_path_edit:AddToggle("PathEditWaitTrinket", {
                 Text = "Wait For Trinket",
                 Default = false,
             })
@@ -19993,10 +20022,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
 
                     local point = points[i]
-                    point.wait_time = tonumber(Options.PointWaitTime and Options.PointWaitTime.Value or "0") or 0
-                    point.gate_location = Options.PointGateLocation and Options.PointGateLocation.Value or ""
-                    point.is_gate_point = Toggles.PointIsGate and Toggles.PointIsGate.Value or false
-                    point.wait_for_trinket = Toggles.PointWaitTrinket and Toggles.PointWaitTrinket.Value or false
+                    point.wait_time = tonumber(Options.PathEditWaitTime and Options.PathEditWaitTime.Value or "0") or 0
+                    point.gate_location = Options.PathEditGateLocation and Options.PathEditGateLocation.Value or ""
+                    point.is_gate_point = Toggles.PathEditIsGate and Toggles.PathEditIsGate.Value or false
+                    point.wait_for_trinket = Toggles.PathEditWaitTrinket and Toggles.PathEditWaitTrinket.Value or false
 
                     if point.is_gate_point and (not point.gate_location or point.gate_location == "") then
                         library:Notify("Gate point needs a gate location")
@@ -20348,13 +20377,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         do
             local group_ui = Tabs.Interface:AddLeftGroupbox("UI Settings")
 
-            group_ui:AddLabel("Accent Color")
-            group_ui:AddColorPicker("AccentColor", {
+            group_ui:AddLabel("Accent Color"):AddColorPicker("AccentColor", {
                 Default = shared.theme.accent or Color3.fromRGB(0, 199, 192),
+                Title = "Accent Color",
+                Transparency = 0,
                 Callback = function(value)
-                    applyAccent(value)
-                end,
-                Changed = function(value)
                     applyAccent(value)
                 end
             })
