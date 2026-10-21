@@ -33,17 +33,17 @@ commit whatever exists, clearly noting what was in progress.
 
 ## Hard rules — DO NOT break these
 
-- **Never rename or remove the URL `https://git.fable.bz/zyu/hydroxide/raw/branch/main/`**
-  inside the `Tagged` script. The script fetches its UI library (Library/SaveManager/
-  ThemeManager) from there at RUNTIME. Breaking the URL breaks the script entirely.
-  "hydroxide" inside that URL must stay as-is even though the rest of the project is
-  renamed to "Tagged".
+- **Never break the self-hosting URLs in the `Tagged` script.** `Tagged` loads its
+  runtime deps from THIS repo via
+  `https://raw.githubusercontent.com/jphcyv4rxx-cmd/Tagged/main/backup/` (line 5,
+  `DEFAULT_RAW`), and `backup/loader.lua` reloads `Tagged` from this repo on rejoin.
+  If these break, the script cannot fetch its dependencies and will not run. The repo
+  MUST stay public, or raw fetches will 403 for the executor.
 - **Never re-add deleted files:** `hydroxide_original.lua` and `thumb.jpg` were deleted
-  on purpose at the user's request. Do not restore them. If the original script is ever
-  needed, re-download it from the URL above (path `ROGUE/rogue_ui.lua`) rather than
-  committing it.
-- **The repo is PRIVATE** and contains a Roblox exploit script. Keep it private. Do not
-  publish, fork publicly, or expose it.
+  on purpose at the user's request. Do not restore them.
+- **The repo is PUBLIC** (required for the loadstring to work) and contains a Roblox
+  exploit script. The user has accepted it is readable. Do not make it private again —
+  that breaks the loadstring.
 
 ## Context for the project
 

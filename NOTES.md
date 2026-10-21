@@ -40,27 +40,34 @@ The user is rebranding it to "Tagged" and improving the UI.
 
 ## Files in this repo
 - `Tagged` — **the deliverable script** (full rogue_ui.lua, ~27,282 lines, renamed).
-- `Library_original.lua` — the UI library the script loads at RUNTIME via HttpGet.
-  Kept here as reference because the UI/layout work lives in THIS file's code,
-  even though at runtime the script fetches its own copy from the network.
+  This is what the loadstring fetches.
+- `backup/` — **self-hosted runtime deps** that `Tagged` loads via HttpGet:
+  `loader.lua`, `DEPENDENCIES/Library.lua`, `SaveManager.lua`, `ThemeManager.lua`,
+  `Chatlogger.lua`. Mirrors the original git.fable.bz layout so all fetches resolve.
 - `NOTES.md` — this file (current state + goals + AI instructions).
 - `CHANGELOG.md` — ordered log of every change made, oldest → newest.
 - `AGENTS.md` — rules for ANY AI agent (auto-read by coding tools). Tells every AI to
   read the memory files, auto-commit + push, and respect the hard constraints.
-- `README.md` — short pointer to AGENTS.md / NOTES.md / CHANGELOG.md.
+- `README.md` — shows the loadstring + hosting explanation + pointers to the memory files.
 
 ## ⚠️ CRITICAL facts about the script (DO NOT BREAK THESE)
-- `Tagged` loads its UI library at RUNTIME via HttpGet from
-  `https://git.fable.bz/zyu/hydroxide/raw/branch/main/`. **That URL MUST stay intact**
-  or the script cannot fetch Library/SaveManager/ThemeManager and will not run.
-  Do NOT rename "hydroxide" inside that URL.
-- `getgenv().tagged_raw` (renamed from `hydroxide_raw`) is read on line ~5 and set on
-  line ~9. Both are kept in sync. The remote loader falls back to the same git.fable.bz
-  URL if it doesn't recognize the var, so the rename is safe — but keep both lines
-  consistent with each other.
-- Everything else "hydroxide / Hydroxide / HYDROXIDE" was renamed to Tagged/tagged.
+- **SELF-HOSTED — no external server dependency.** `Tagged` loads its runtime deps from
+  THIS repo via `https://raw.githubusercontent.com/jphcyv4rxx-cmd/Tagged/main/backup/`.
+  That URL must stay intact or the script cannot fetch Library/SaveManager/ThemeManager/
+  Chatlogger/loader and will not run. (Changed 2026-10-21 — used to point at zyu's
+  git.fable.bz server; now fully self-hosted so it survives the original being taken down.)
+- `getgenv().tagged_raw` is read on line ~5 and set on line ~9. Both kept in sync.
+- The ONLY remaining "hydroxide"/git.fable.bz mention in `Tagged` is a COMMENT on line
+  ~3872 (Stella feature, an alternative-host note). It is NOT executed. Leave it.
+- `backup/loader.lua` was rewritten to load `Tagged` from THIS repo on rejoin (it used to
+  pull zyu's original rogue_ui.lua — that would have silently reverted the rebrand).
 - The script uses Roblox exploit APIs (Drawing library, `getgenv`, `readfile`/`writefile`,
   `makefolder`). Config folders are now `Tagged/...` on the executor filesystem.
+
+## Loadstring (shown in README)
+- `loadstring(game:HttpGet("https://raw.githubusercontent.com/jphcyv4rxx-cmd/Tagged/main/Tagged"))()`
+- Repo is PUBLIC (required — private repos 403 on unauthenticated HttpGet). User accepted
+  that the code is readable, same as zyu's setup.
 
 ## Reference UI look (sampled pixel-accurately from user's screenshots)
 - Panels: very dark grey — `#222222` / `#1B1B1B`.
@@ -73,15 +80,17 @@ The user is rebranding it to "Tagged" and improving the UI.
     means the search bar is ENABLED.
 
 ## Current state
-- Renaming COMPLETE and pushed to GitHub (private repo).
+- Renaming COMPLETE and pushed to GitHub.
+- **Self-hosting COMPLETE** — script + all runtime deps now live on THIS repo, no
+  dependency on zyu's git.fable.bz. Repo is PUBLIC; loadstring is in README.
 - UI work (compact + accent picker + teal) NOT yet started.
 
 ## TODO / next steps (in order)
 - [ ] 1. Change default accent from red → teal `#00C7C0`.
 - [ ] 2. Add a live accent color picker (wire to `utility:ChangeAccent`, persist w/ SaveManager).
-- [ ] 3. Compact the UI. Layout lives in the EXTERNAL `Library.lua` fetched at runtime —
-       so compaction must be done either by calling `Library:SetDPIScale(<100)` before
-       `CreateWindow`, or by patching what `Tagged` passes to the library. Investigate first.
+- [ ] 3. Compact the UI. Layout lives in `backup/DEPENDENCIES/Library.lua` — compaction
+       can be done via `Library:SetDPIScale(<100)` before `CreateWindow`, or by patching
+       the library directly (now that we self-host it, patching IS an option).
 - [ ] 4. Verify the search bar already greys-out + jumps to matches; tune if needed.
 
 ## Deleted on purpose (DO NOT re-add)
@@ -92,9 +101,15 @@ The user is rebranding it to "Tagged" and improving the UI.
   deleted from local disk at user's request. Colors are preserved in this file instead.
 
 ## Decisions log
-- 2026-10-21: GitHub repo is **PRIVATE** (script is an exploit menu — keep private).
+- 2026-10-21: Repo started PRIVATE, then flipped **PUBLIC** — a loadstring needs
+  unauthenticated raw fetches, which 403 on private repos. User accepted the code is
+  readable (same as zyu's setup).
 - 2026-10-21: User chose **auto-commit + push** to save progress across devices.
 - 2026-10-21: Delete `hydroxide_original.lua` and `thumb.jpg` from the repo. Purged
   `hydroxide_original.lua` from git history via force-push.
 - 2026-10-21: Progress is tracked via `NOTES.md` (state) + `CHANGELOG.md` (ordered log).
   AI must update both on every change.
+- 2026-10-21: **Self-host all runtime deps** in `backup/` and repoint `Tagged` at this
+  repo instead of zyu's git.fable.bz, so the script survives the original being taken
+  down and the user can add features. Rewrote `backup/loader.lua` to reload `Tagged`
+  from this repo on rejoin.

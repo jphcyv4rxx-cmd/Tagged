@@ -67,3 +67,21 @@ survives across devices — a new session reads this to see what's already done.
   device, not just a single chat session.
 - **Status:** done
 - **Next:** begin UI work — first change the default accent from red to teal `#00C7C0`.
+
+## [2026-10-21] Self-host all runtime deps + add loadstring (no more git.fable.bz)
+- **File(s):** `Tagged` (line 5), `backup/loader.lua` (rewritten), `backup/DEPENDENCIES/*`
+  (added: Library, SaveManager, ThemeManager, Chatlogger), `README.md`, `NOTES.md`
+- **What changed:** The script no longer depends on zyu's git.fable.bz server. Downloaded
+  all 5 runtime deps (loader.lua + DEPENDENCIES/{Library,SaveManager,ThemeManager,
+  Chatlogger}.lua) into `backup/`, mirroring the original path layout so every
+  `DEFAULT_RAW .. "DEPENDENCIES/..."` fetch resolves. Repointed `Tagged` line 5
+  `DEFAULT_RAW` from `https://git.fable.bz/zyu/hydroxide/raw/branch/main/` to
+  `https://raw.githubusercontent.com/jphcyv4rxx-cmd/Tagged/main/backup/`. Rewrote
+  `backup/loader.lua` to load `Tagged` from this repo on rejoin (it previously pulled
+  zyu's original rogue_ui.lua, which would have reverted the rebrand after a rejoin).
+  Flipped the repo PUBLIC (required for unauthenticated HttpGet — private repos 403);
+  user accepted the code is readable, same as zyu. Added a one-line loadstring to
+  `README.md`: `loadstring(game:HttpGet("https://raw.githubusercontent.com/jphcyv4rxx-cmd/Tagged/main/Tagged"))()`.
+  Only remaining git.fable.bz mention in `Tagged` is a non-executed comment on line ~3872.
+- **Status:** done
+- **Next:** begin UI work — first change the default accent from red to teal `#00C7C0`.
