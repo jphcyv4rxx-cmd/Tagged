@@ -132,3 +132,18 @@ survives across devices — a new session reads this to see what's already done.
 - **Status:** done (syntax-validated with the Luau compiler; pending in-game test)
 - **Next:** in-game test pass — verify accent-bar dragging, font changer, neutral
   leaderboard and the Path Editor save/load round-trip on the executor.
+
+## [2026-10-22] Fix: library theme-colour registry crashed on property overrides
+- **File(s):** `backup/DEPENDENCIES/Library.lua`
+- **What changed:** The script errored on load with
+  `Unable to assign property TextColor3. Color3 expected, got string` at
+  `FillInstance`. Cause: `FillInstance` had a branch for "key already registered in
+  `Library.Registry`" that only cleared the registry entry and let execution fall
+  through to the raw assign, so any element that overrode a colour its *template*
+  had already set (e.g. the new top-bar title overriding `TextLabel`'s default
+  `TextColor3 = "FontColor"` with `"BackgroundColor"`) got the literal string
+  assigned to a `Color3` property. Reordered the branches so theme-registry values
+  (`Library.Scheme[v]` or a function) always resolve first, and the "literal
+  overrides a registered theme key" case is the only one that prunes the registry.
+- **Status:** done
+- **Next:** re-run the in-game test pass (previous entry's checklist).

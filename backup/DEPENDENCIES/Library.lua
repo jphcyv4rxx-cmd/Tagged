@@ -1097,13 +1097,17 @@ local function FillInstance(Table: { [string]: any }, Instance: GuiObject)
     for k, v in pairs(Table) do
         if k == "DPIExclude" or k == "DPIOffset" then
             continue
-        elseif ThemeProperties[k] then
-            ThemeProperties[k] = nil
         elseif k ~= "Text" and (Library.Scheme[v] or typeof(v) == "function") then
-            -- me when Red in dropdowns break things (temp fix - or perm idk if deivid will do something about this)
+            -- Theme-registry colour/function value: store the key so a later
+            -- SetTheme/UpdateColors pass can re-resolve it, and apply it now.
+            -- (Overriding a key that a template already registered must also
+            -- resolve here, otherwise the raw string reaches the property.)
             ThemeProperties[k] = v
             Instance[k] = Library.Scheme[v] or v()
             continue
+        elseif ThemeProperties[k] then
+            -- Overriding a previously-registered theme key with a literal value.
+            ThemeProperties[k] = nil
         end
 
         if not DPIExclude[k] then
