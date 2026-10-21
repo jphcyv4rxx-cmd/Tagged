@@ -5911,7 +5911,9 @@ function Library:CreateWindow(WindowInfo)
 
         --// Top Bar \\-
         local TopBar = New("Frame", {
-            BackgroundColor3 = "AccentColor",
+            BackgroundColor3 = function()
+                return Library.Scheme.AccentColor
+            end,
             BackgroundTransparency = WindowInfo.AccentTopBar and 0 or 1,
             BorderSizePixel = 0,
             Name = "TopBar",
@@ -5961,7 +5963,12 @@ function Library:CreateWindow(WindowInfo)
             BackgroundTransparency = 1,
             Size = UDim2.new(0, X, 1, 0),
             Text = WindowInfo.Title,
-            TextColor3 = "BackgroundColor",
+            -- Function value (not the "BackgroundColor" registry string): resolves to a
+            -- real Color3 and is handled by every version of FillInstance, so the title
+            -- cannot trip the "string assigned to TextColor3" path on a stale library.
+            TextColor3 = function()
+                return Library.Scheme.BackgroundColor
+            end,
             FontFace = Font.fromEnum(Enum.Font.GothamBold),
             TextSize = 17,
             Parent = TitleHolder,
@@ -6039,7 +6046,12 @@ function Library:CreateWindow(WindowInfo)
             FontFace = Font.fromEnum(Enum.Font.Gotham),
             Size = WindowInfo.SearchbarSize,
             TextScaled = true,
-            TextColor3 = "FontColor",
+            -- Function value rather than the "FontColor" registry string: the TextBox
+            -- template already registers TextColor3, so a literal string here would be
+            -- assigned raw on older library builds.
+            TextColor3 = function()
+                return Library.Scheme.FontColor
+            end,
             Visible = not (WindowInfo.DisableSearch or false),
             Parent = RightWrapper,
         })
@@ -6064,7 +6076,9 @@ function Library:CreateWindow(WindowInfo)
         if SearchIcon then
             New("ImageLabel", {
                 Image = SearchIcon.Url,
-                ImageColor3 = "BackgroundColor",
+                ImageColor3 = function()
+                    return Library.Scheme.BackgroundColor
+                end,
                 ImageRectOffset = SearchIcon.ImageRectOffset,
                 ImageRectSize = SearchIcon.ImageRectSize,
                 ImageTransparency = 0.2,

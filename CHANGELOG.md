@@ -159,3 +159,19 @@ survives across devices — a new session reads this to see what's already done.
   `true` flag) so an updated library always comes down.
 - **Status:** done
 - **Next:** reload the script in-game (fresh executor session) and re-test.
+
+## [2026-10-22] Make the new UI colours version-proof (no registry strings over template props)
+- **File(s):** `backup/DEPENDENCIES/Library.lua`
+- **What changed:** Root cause of the repeated crash found by diffing against upstream
+  `b4ee7b6`: the original library never hit the `FillInstance` string→`Color3` bug
+  because the upstream SearchBox set `BackgroundColor3` (a property the `TextBox`
+  *template* does not define) and the upstream title label set **no** `TextColor3`. My
+  UI work added `TextColor3` on the title (`TextLabel` template already registers
+  `TextColor3`) and `TextColor3` on the search box (`TextBox` template likewise) — the
+  first collisions ever to hit that latent branch. Switched all four new colour props
+  (title `TextColor3`, search box `TextColor3`, search icon `ImageColor3`, top-bar
+  `BackgroundColor3`) to **function values** (`function() return Library.Scheme.X end`),
+  which every version of `FillInstance` resolves correctly. The library is now safe on
+  old *and* new builds, so a stale cached copy can no longer crash the script.
+- **Status:** done
+- **Next:** reload in-game; the title/search bar should render with correct colours.
