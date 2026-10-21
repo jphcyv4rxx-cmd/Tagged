@@ -3178,7 +3178,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
     end
     
     local success, library_func = pcall(function()
-        return loadstring(game:HttpGet(DEFAULT_RAW .. "DEPENDENCIES/Library.lua", true))()
+        -- Cache-bust like SaveManager/ThemeManager do below: the raw CDN (and some
+        -- executors' HttpGet) will otherwise serve a stale Library.lua after an update.
+        return loadstring(game:HttpGet(DEFAULT_RAW .. "DEPENDENCIES/Library.lua?nonce="..tostring(math.random()), true))()
     end)
 
     if success then

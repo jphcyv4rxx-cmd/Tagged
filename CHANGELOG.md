@@ -147,3 +147,15 @@ survives across devices — a new session reads this to see what's already done.
   overrides a registered theme key" case is the only one that prunes the registry.
 - **Status:** done
 - **Next:** re-run the in-game test pass (previous entry's checklist).
+
+## [2026-10-22] Cache-bust Library.lua fetch (stale CDN copy caused the repeated error)
+- **File(s):** `Tagged` (line ~3181)
+- **What changed:** The previous `FillInstance` fix WAS live on GitHub, but the user still
+  saw the same error — because `Tagged` fetched `Library.lua` with
+  `game:HttpGet(DEFAULT_RAW .. "DEPENDENCIES/Library.lua", true)`, and that `true`
+  (nocache) flag is ignored by some executors, so a stale cached copy was being loaded.
+  `SaveManager`/`ThemeManager` right below already append `?nonce=<random>` for exactly
+  this reason. Added the same `?nonce=` param to the `Library.lua` fetch (keeping the
+  `true` flag) so an updated library always comes down.
+- **Status:** done
+- **Next:** reload the script in-game (fresh executor session) and re-test.
