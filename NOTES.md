@@ -53,6 +53,15 @@ The user is rebranding it to "Tagged" and improving the UI.
   read the memory files, auto-commit + push, and respect the hard constraints.
 - `README.md` — shows the loadstring + hosting explanation + pointers to the memory files.
 
+## Runtime files (executor side, NOT in this repo)
+- `Tagged/ui_state.json` — persisted UI prefs: `accent` (hex), `font` (Enum.Font name),
+  `scale` (%). Written by the Accent picker / UI Font / UI Scale controls and reapplied
+  at startup (`read_ui_state` ~line 7453).
+- `Tagged/trinket_paths/<name>.json` — saved paths: `{ points = {...}, settings = {...} }`.
+  Each point may carry `action = { type, value }` for LUA/TALK/EQUIP/WAIT/L-CLICK/R-CLICK.
+- `Tagged/trinket_paths/lua/<name>.lua` — scripts run by `LUA` action points. Created
+  automatically; the runner only ever reads from this folder.
+
 ## ⚠️ CRITICAL facts about the script (DO NOT BREAK THESE)
 - **SELF-HOSTED — no external server dependency.** `Tagged` loads its runtime deps from
   THIS repo via `https://raw.githubusercontent.com/jphcyv4rxx-cmd/Tagged/main/backup/`.
@@ -80,13 +89,24 @@ The user is rebranding it to "Tagged" and improving the UI.
 - Key locations in `Tagged`:
   - Theme table w/ accent: search `accent = Color3.fromRGB(0,199,192)` (~line 364).
   - `utility:ChangeAccent(accentColor)`: ~line 2328 — updates `shared.accents` drawings.
-  - `applyAccent(color)` helper: ~line 7430; used by the picker.
-  - Window creation (`library:CreateWindow`): ~line 7445. `DisableSearch = false` there
+  - `applyAccent(color)` helper: ~line 7430; used by the picker (also rebuilds the
+    floating path editor via `refresh_theme`).
+  - `read_ui_state` / `write_ui_state` / `applyUIFont`: ~line 7453–7530. Persists
+    accent/font/scale to `Tagged/ui_state.json` and force-applies the font to every text
+    element in `library.ScreenGui`.
+  - Window creation (`library:CreateWindow`): ~line 7536. `DisableSearch = false` there
     means the search bar is ENABLED.
   - Tabs: `Bot Path` (bot), `Macros`, `Interface`, `Config` — no separate Path Editor tab.
+  - Path point actions (`path_action_*` helpers + `RunPathPointAction`): ~line 13900–
+    14170, called from the main loop inside `if not skip_current_point then`.
+  - `ExecutePath`: ~line 14216.
+  - Gorpig detector (scan loop + `gorpig_log_push`): ~line 16941; its groupbox ~line
+    19041. Proximity slider `GorpigProximity` sits with the other proximity sliders in
+    the Trinket Bot groupbox (~line 17400).
+  - Single path saver `save_current_path_file`: ~line 18405 (exposed as
+    `cheat_client.path_api.save_current_path` at ~line 19073).
   - Bot Path block (floating path editor + Path Files groupbox):
-    `--// Bot Path — path files + floating path editor \\--` (~line 19677).
-  - `cheat_client.path_api` bridge: end of the trinket-bot block (~line 18458).
+    `--// Bot Path — path files + floating path editor \\--` (~line 20291).
 
 ## Current state
 - Renaming COMPLETE and pushed to GitHub.
@@ -107,6 +127,20 @@ The user is rebranding it to "Tagged" and improving the UI.
   `+ Add @ Me`, `+ Action`, `Copy`, `Paste`, `Test`, `Refresh`, `Save`, and per-row
   `^` / `v` / `X` to reorder and delete points. AREA = gate location (type one to make it
   a gate point), OPTIONS = wait seconds. Visualise Points toggle lives in Trinket Bot.
+- **Editor polish + action points COMPLETE** (2026-10-22): drag runs on
+  `RenderStepped` (smooth), `+ Action` opens a type picker (`LUA`, `TALK`, `EQUIP`,
+  `WAIT`, `L-CLICK`, `R-CLICK`), actions persist in the path JSON as
+  `action = { type, value }`, and the runner executes them after arriving at the point.
+  Accent + font + scale persist in `Tagged/ui_state.json` and are reapplied at startup;
+  the editor rebuilds itself (`editor.refresh_theme`) on accent/font change, and
+  `applyUIFont` force-writes `FontFace` on every text element so all tabs change.
+- **Gorpig detector COMPLETE** (2026-10-22): toggle + 8-line stamped log + clear button
+  in a `Gorpig Detector` groupbox (Bot Path), scanning for `gorpig` models while a path
+  runs; range set by the `Gorpig Proximity (studs)` slider (default 150) next to the
+  other proximity sliders.
+- **Save de-duplicated** (2026-10-22): one implementation
+  (`save_current_path_file`), used by both `Save Path` and the editor's `Save`; the
+  duplicate `Save Current Path` button was removed from `Path Files`.
 - All changes syntax-validated with the Luau compiler; in-game test still pending.
 
 ## TODO / next steps (in order)
@@ -117,9 +151,14 @@ The user is rebranding it to "Tagged" and improving the UI.
 - [x] 4. Verify the search bar already greys-out + jumps to matches (it does; relabelled
        to `Search  (ctrl+f)`).
 - [ ] 5. In-game test pass on the executor: accent-bar drag, font changer, neutral
-       leaderboard, Path Editor save/load round-trip.
-- [ ] 6. (Optional, deferred) Add a `LUA` point type to the Path Editor, per the spec the
-       user dropped in `lua-action.md` (runs a Lua file from `Tagged/trinket_paths/lua/`).
+       leaderboard, Path Editor save/load round-trip, smooth editor drag, accent/font
+       persistence across reload, LUA + TALK points, Gorpig log while botting.
+- [x] 6. Add a `LUA` point type to the Path Editor, per the spec the user dropped in
+       `lua-action.md` (runs a Lua file from `Tagged/trinket_paths/lua/`). ✅ DONE
+       (2026-10-22) plus `TALK` / `EQUIP` / `WAIT` / `L-CLICK` / `R-CLICK`.
+- [ ] 7. (Deferred) `env.kill` / `env.wipe` / `env.menu` / `env.setInn` / `env.expectDeath`
+       are NOT implemented in the LUA env — they need death-window / gate integration.
+       `menu` and `setInn` are not exposed as reusable functions in this build.
 
 ## Deleted on purpose (DO NOT re-add)
 - `hydroxide_original.lua` — the unmodified original. User asked to delete it from

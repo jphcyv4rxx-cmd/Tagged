@@ -233,3 +233,62 @@ survives across devices — a new session reads this to see what's already done.
 - **Status:** done (Luau-validated)
 - **Next:** in-game check — open the editor from `Path Files`, add/reorder/delete points,
   confirm the markers update and Save round-trips.
+
+## [2026-10-22] Smooth editor drag, action points (LUA/TALK/etc), saved accent+font, Gorpig log
+- **File(s):** `Tagged`
+- **What changed:**
+  - **Path editor drag is smooth now.** The window used to move from `InputObject.Changed`,
+    which only fires when the OS reports a new cursor position and runs behind the
+    renderer — that is what felt choppy. It now captures a start cursor position on
+    `InputBegan` and moves the window on **`RunService.RenderStepped`** from the
+    `UserInputService:GetMouseLocation()` delta (constant offsets cancel out, so no
+    inset/DPI math is needed). `InputObject.Changed` is only used to detect
+    `UserInputState == End` and disconnect the render connection.
+  - **Action point types.** `+ Action` in the editor toolbar now opens a small popup
+    list instead of dumping a plain wait point. New point types:
+    `LUA` (run a file from `Tagged/trinket_paths/lua/`), `TALK` (walk to the point then
+    click the nearest/`--name`-matched NPC's ClickDetector), `EQUIP` (tool by name),
+    `WAIT` (seconds), `L-CLICK`, `R-CLICK`. The `TYPE` column shows them colour-coded;
+    `OPTIONS` edits the action's argument (file / NPC / tool / seconds) and `AREA` goes
+    read-only on action rows. Actions are stored per point as
+    `action = { type, value }` — carried through the editor's Copy/Paste, both JSON
+    serializers and the path loader, so old paths still load unchanged.
+  - **LUA action runner** (`path_action_run_lua`) executes the file with the documented
+    `env` table: `char`, `hum`, `hrp`, `point`, `findTool`, `leftClick`, `rightClick`,
+    `mana` (`charge` / `decharge` / `chargeUntil` / `available` / `canUse` /
+    `usingKeyPress`), `botLog`, `running`, `webhook`, `requestRemote`, `drop`. The
+    `lua/` folder is created automatically. Errors are reported through the notify log
+    instead of killing the run.
+  - **Runner hook.** `RunPathPointAction` runs inside the main path loop right after the
+    bot arrives at a point (inside `if not skip_current_point`, before the wait time),
+    wrapped in `pcall` so a broken action cannot abort the route.
+  - **Accent is persisted.** The library's `SaveManager` ignores theme settings, so
+    accent / font / scale now live in `Tagged/ui_state.json` (`read_ui_state` /
+    `write_ui_state`). The colour picker writes the hex on change, and the file is
+    reapplied in a `task.defer` once every tab exists.
+  - **Path editor honours the accent.** `applyAccent` calls `cheat_client.path_editor
+    .refresh_theme()`, which rebuilds the floating window with the current scheme and
+    keeps its visibility — previously it was built once with the old accent and never
+    updated.
+  - **Font now applies to every tab.** `applyUIFont` still calls `library:SetFont`, but
+    then force-writes `FontFace` on every `TextLabel` / `TextButton` / `TextBox` under
+    `library.ScreenGui`. Elements created outside the colour registry (dependency
+    boxes, dropdown popups, key pickers, search box) were the ones that stayed on the
+    old font. The `UI Font` dropdown default is now `Code` to match
+    `Library.Scheme.Font` instead of claiming `Gotham`.
+  - **Gorpig detector.** New `Gorpig Detector` groupbox in **Bot Path**: toggle, wrapped
+    8-line log (newest first, `[HH:MM:SS]` stamped) and `Clear Gorpig Log`. A 1s
+    background loop scans `workspace` for `Model`s whose name contains `gorpig` while a
+    path is running, reports anything inside the range with a 20s per-model re-log
+    throttle (weak-keyed table), and notifies. The range is the new
+    **`Gorpig Proximity (studs)`** slider (default 150), placed with the other
+    proximity sliders in the Trinket Bot groupbox.
+  - **De-duplication.** There is now exactly one save implementation:
+    `save_current_path_file()` in the bot block (it can snapshot the bot settings),
+    exposed as `cheat_client.path_api.save_current_path`. The `Save Path` button and the
+    editor's `Save` both call it, and the duplicate `Save Current Path` button was
+    removed from `Path Files` (now Open / Duplicate / Rename only).
+- **Status:** done (Luau-validated with `luau-compile`)
+- **Next:** in-game pass — drag the editor, reload to confirm the accent/font stick,
+  swap fonts and check every tab, add a LUA + TALK point to a throwaway path, and watch
+  the Gorpig log while botting.

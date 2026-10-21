@@ -7435,7 +7435,103 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             utility:ChangeAccent(color)
             library.Scheme.AccentColor = color
             library:UpdateColorsUsingRegistry()
+
+            -- The floating path editor lives in its own ScreenGui, so it is not in
+            -- the library's colour registry. Rebuild it to pick up the new accent.
+            local path_editor = cheat_client.path_editor
+            if path_editor and path_editor.refresh_theme then
+                pcall(path_editor.refresh_theme)
+            end
         end
+
+        --// Persistent UI preferences (accent / font / scale) \\--
+        -- The library's SaveManager deliberately ignores theme settings, so the
+        -- visual preferences are persisted in their own tiny file and reapplied
+        -- at startup. This is what keeps the path editor on the saved accent.
+        local UI_STATE_FILE = "Tagged/ui_state.json"
+
+        local function read_ui_state()
+            local state = { accent = nil, font = nil, scale = nil }
+
+            if not (isfile and readfile) then
+                return state
+            end
+
+            local ok, decoded = pcall(function()
+                if isfile(UI_STATE_FILE) then
+                    return Services.HttpService:JSONDecode(readfile(UI_STATE_FILE))
+                end
+            end)
+
+            if ok and type(decoded) == "table" then
+                if type(decoded.accent) == "string" then
+                    state.accent = decoded.accent
+                end
+                if type(decoded.font) == "string" then
+                    state.font = decoded.font
+                end
+                if type(decoded.scale) == "number" then
+                    state.scale = decoded.scale
+                end
+            end
+
+            return state
+        end
+
+        local function write_ui_state(patch)
+            if not writefile or type(patch) ~= "table" then
+                return
+            end
+
+            local state = read_ui_state()
+            for key, value in pairs(patch) do
+                state[key] = value
+            end
+
+            if isfolder and makefolder and not isfolder("Tagged") then
+                pcall(makefolder, "Tagged")
+            end
+
+            pcall(function()
+                writefile(UI_STATE_FILE, Services.HttpService:JSONEncode(state))
+            end)
+        end
+
+        -- Sets the font on the scheme AND on every text element that already
+        -- exists. Elements created outside the colour registry (dependency boxes,
+        -- dropdown popups, the search box, key pickers) never picked up SetFont on
+        -- their own, which is why only part of the UI used to change.
+        local function applyUIFont(font_name)
+            local font_enum = Enum.Font[font_name] or Enum.Font.Gotham
+
+            local ok = pcall(function()
+                library:SetFont(font_enum)
+            end)
+            if not ok then
+                return
+            end
+
+            pcall(function()
+                local screen = library.ScreenGui
+                if not screen then
+                    return
+                end
+
+                local font_face = (Font.fromEnum and Font.fromEnum(font_enum)) or font_enum
+                for _, object in ipairs(screen:GetDescendants()) do
+                    if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+                        object.FontFace = font_face
+                    end
+                end
+            end)
+
+            local path_editor = cheat_client.path_editor
+            if path_editor and path_editor.refresh_theme then
+                pcall(path_editor.refresh_theme)
+            end
+        end
+
+        local ui_state = read_ui_state()
 
         local window = library:CreateWindow({
             Title = HXD_UserNote and string.format("Tagged | %s", HXD_UserNote:sub(1,1):upper() .. HXD_UserNote:sub(2)) or "Tagged",
@@ -13748,6 +13844,375 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             local currently_dropping = false
             local droppedTools = {}
 
+            --// Path point actions (LUA / TALK / EQUIP / clicks) \\--
+            local LUA_POINTS_FOLDER = "Tagged/trinket_paths/lua"
+
+            local function path_action_log(fmt, ...)
+                local text
+                if select("#", ...) > 0 then
+                    local ok, formatted = pcall(string.format, fmt, ...)
+                    text = ok and formatted or tostring(fmt)
+                else
+                    text = tostring(fmt)
+                end
+
+                if library and library.Notify then
+                    library:Notify(text)
+                else
+                    warn("[Tagged] " .. text)
+                end
+            end
+
+            local function path_action_find_tool(name)
+                if not name or name == "" then
+                    return nil
+                end
+
+                local needle = name:lower()
+                local character = plr.Character
+                local containers = {}
+
+                if character then
+                    table.insert(containers, character)
+                end
+
+                local backpack = FindFirstChild(plr, "Backpack")
+                if backpack then
+                    table.insert(containers, backpack)
+                end
+
+                for _, container in ipairs(containers) do
+                    for _, child in next, container:GetChildren() do
+                        if child:IsA("Tool") and child.Name:lower():find(needle, 1, true) then
+                            return child
+                        end
+                    end
+                end
+
+                return nil
+            end
+
+            local function path_action_npc_containers()
+                local containers = {}
+
+                local npc_folder = FindFirstChild(ws, "NPCs")
+                if npc_folder then
+                    table.insert(containers, npc_folder)
+                end
+
+                for _, container_name in ipairs({ "Mobs", "Mob", "Entities", "Enemies" }) do
+                    local container = FindFirstChild(ws, container_name)
+                    if container then
+                        table.insert(containers, container)
+                    end
+                end
+
+                return containers
+            end
+
+            local function path_action_find_npc(name_filter, max_distance)
+                local character = plr.Character
+                local hrp = character and FindFirstChild(character, "HumanoidRootPart")
+                if not hrp then
+                    return nil, nil
+                end
+
+                local needle = (name_filter and name_filter ~= "") and name_filter:lower() or nil
+                local best, best_distance = nil, max_distance or 60
+
+                for _, container in ipairs(path_action_npc_containers()) do
+                    for _, npc in next, container:GetChildren() do
+                        local root = FindFirstChild(npc, "HumanoidRootPart") or FindFirstChild(npc, "Head")
+                        if root and root:IsA("BasePart") and (not needle or npc.Name:lower():find(needle, 1, true)) then
+                            local distance = (root.Position - hrp.Position).Magnitude
+                            if distance <= best_distance then
+                                best, best_distance = npc, distance
+                            end
+                        end
+                    end
+                end
+
+                return best, best_distance
+            end
+
+            local function path_action_talk(name_filter)
+                local npc, distance = path_action_find_npc(name_filter, 80)
+                if not npc then
+                    path_action_log(
+                        "talk: no NPC found%s",
+                        (name_filter and name_filter ~= "") and (" matching '" .. name_filter .. "'") or ""
+                    )
+                    return false
+                end
+
+                local click_detector = FindFirstChildWhichIsA(npc, "ClickDetector", true)
+                if not click_detector then
+                    path_action_log("talk: %s has no ClickDetector", npc.Name)
+                    return false
+                end
+
+                local reach = click_detector.MaxActivationDistance or 32
+                if distance and distance > (reach - 2) then
+                    local root = FindFirstChild(npc, "HumanoidRootPart") or FindFirstChild(npc, "Head")
+                    if root and root:IsA("BasePart") and plr.Character then
+                        local destination = root.Position + (root.CFrame.LookVector * -4)
+                        pcall(function()
+                            plr.Character:PivotTo(CFrame.new(destination))
+                        end)
+                        task.wait(0.25)
+                    end
+                end
+
+                path_action_log("talk: clicking %s (%.0f studs)", npc.Name, distance or 0)
+                pcall(fireclickdetector, click_detector)
+                task.wait(0.4)
+                return true
+            end
+
+            local function path_action_lua_env(point)
+                local character = plr.Character
+                local humanoid = character and FindFirstChildOfClass(character, "Humanoid")
+                local hrp = character and FindFirstChild(character, "HumanoidRootPart")
+
+                return {
+                    char = character,
+                    hum = humanoid,
+                    hrp = hrp,
+                    point = point,
+
+                    findTool = function(name)
+                        return path_action_find_tool(name)
+                    end,
+
+                    leftClick = function()
+                        pcall(function()
+                            utility:LeftClick()
+                        end)
+                    end,
+
+                    rightClick = function()
+                        pcall(function()
+                            utility:RightClick()
+                        end)
+                    end,
+
+                    mana = {
+                        charge = function()
+                            pcall(function()
+                                utility:charge_mana()
+                            end)
+                        end,
+                        decharge = function()
+                            pcall(function()
+                                utility:decharge_mana()
+                            end)
+                        end,
+                        chargeUntil = function(amount, keep_going)
+                            pcall(function()
+                                utility:charge_mana_until(amount or 50)
+                            end)
+                            if keep_going == false then
+                                pcall(function()
+                                    utility:decharge_mana()
+                                end)
+                            end
+                        end,
+                        available = function()
+                            local char = plr.Character
+                            return char ~= nil and FindFirstChild(char, "Mana") ~= nil
+                        end,
+                        canUse = function()
+                            local char = plr.Character
+                            if not char then
+                                return false
+                            end
+                            if FindFirstChildWhichIsA(char, "ForceField") then
+                                return false
+                            end
+                            return FindFirstChild(char, "Mana") ~= nil
+                        end,
+                        usingKeyPress = function()
+                            local char = plr.Character
+                            return char ~= nil and FindFirstChild(char, "Charge") ~= nil
+                        end,
+                    },
+
+                    botLog = function(fmt, ...)
+                        path_action_log(fmt, ...)
+                    end,
+
+                    running = function()
+                        return trinket_bot.path_running and not (shared and shared.is_unloading)
+                    end,
+
+                    webhook = function(text)
+                        pcall(function()
+                            utility:plain_webhook(tostring(text))
+                        end)
+                    end,
+
+                    requestRemote = function(name)
+                        if not name or name == "" then
+                            return nil
+                        end
+
+                        local needle = name:lower()
+                        local replicated = Services.ReplicatedStorage
+                        if not replicated then
+                            return nil
+                        end
+
+                        for _, object in next, replicated:GetDescendants() do
+                            if (object:IsA("RemoteEvent")
+                                    or object:IsA("RemoteFunction")
+                                    or object:IsA("UnreliableRemoteEvent"))
+                                and object.Name:lower() == needle then
+                                return object
+                            end
+                        end
+
+                        return nil
+                    end,
+
+                    drop = function(name, count)
+                        local char = plr.Character
+                        local hum = char and FindFirstChildOfClass(char, "Humanoid")
+                        if not hum then
+                            return false
+                        end
+
+                        local drop_one = function()
+                            local tool = path_action_find_tool(name)
+                            if not tool then
+                                return false
+                            end
+                            pcall(function()
+                                hum:EquipTool(tool)
+                            end)
+                            task.wait(0.15)
+                            pcall(function()
+                                tool.Parent = ws
+                            end)
+                            task.wait(0.15)
+                            return true
+                        end
+
+                        if count == true then
+                            for _ = 1, 50 do
+                                if not drop_one() then
+                                    break
+                                end
+                            end
+                            return true
+                        end
+
+                        if not drop_one() then
+                            return false
+                        end
+
+                        for _ = 2, math.max(1, tonumber(count) or 1) do
+                            if not drop_one() then
+                                break
+                            end
+                        end
+
+                        return true
+                    end,
+                }
+            end
+
+            local function path_action_run_lua(point)
+                local file_name = tostring(point.action and point.action.value or "")
+                file_name = file_name:gsub("%s+", "")
+
+                if file_name == "" then
+                    path_action_log("lua: no file name set for this point")
+                    return false
+                end
+
+                file_name = file_name:gsub("%.lua$", "")
+                local file_path = LUA_POINTS_FOLDER .. "/" .. file_name .. ".lua"
+
+                if not (isfile and readfile) then
+                    path_action_log("lua: readfile is not supported by this executor")
+                    return false
+                end
+
+                if not isfile(file_path) then
+                    if isfolder and makefolder and not isfolder(LUA_POINTS_FOLDER) then
+                        pcall(makefolder, LUA_POINTS_FOLDER)
+                    end
+                    path_action_log("lua: file not found (%s)", file_path)
+                    return false
+                end
+
+                local ok_read, source = pcall(readfile, file_path)
+                if not ok_read or type(source) ~= "string" then
+                    path_action_log("lua: could not read %s", file_path)
+                    return false
+                end
+
+                local chunk, load_error = loadstring(source, "@" .. file_path)
+                if not chunk then
+                    path_action_log("lua: syntax error in %s: %s", file_name, tostring(load_error))
+                    return false
+                end
+
+                local ok_run, run_error = pcall(chunk, path_action_lua_env(point))
+                if not ok_run then
+                    path_action_log("lua: runtime error in %s: %s", file_name, tostring(run_error))
+                    return false
+                end
+
+                return true
+            end
+
+            local function RunPathPointAction(point)
+                local action = point.action
+                if not action or not action.type then
+                    return
+                end
+
+                local action_type = action.type
+                local value = action.value or ""
+
+                if action_type == "lua" then
+                    path_action_run_lua(point)
+                elseif action_type == "talk" then
+                    path_action_talk(value)
+                elseif action_type == "equip" then
+                    local tool = path_action_find_tool(value)
+                    local character = plr.Character
+                    local humanoid = character and FindFirstChildOfClass(character, "Humanoid")
+                    if tool and humanoid then
+                        pcall(function()
+                            humanoid:EquipTool(tool)
+                        end)
+                        task.wait(0.3)
+                    else
+                        path_action_log("equip: '%s' not found", value)
+                    end
+                elseif action_type == "wait" then
+                    local seconds = tonumber(value) or 1
+                    local started = tick()
+                    while tick() - started < seconds
+                        and trinket_bot.path_running
+                        and not (shared and shared.is_unloading) do
+                        task.wait(0.1)
+                    end
+                elseif action_type == "leftclick" then
+                    pcall(function()
+                        utility:LeftClick()
+                    end)
+                    task.wait(0.2)
+                elseif action_type == "rightclick" then
+                    pcall(function()
+                        utility:RightClick()
+                    end)
+                    task.wait(0.2)
+                end
+            end
+
             local function ExecutePath(test_mode)
                 if not cheat_client or not cheat_client.config then
                     return
@@ -15913,6 +16378,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
 
                     if not skip_current_point then
+                        if point.action and point.action.type then
+                            local action_ok, action_error = pcall(RunPathPointAction, point)
+                            if not action_ok then
+                                library:Notify(string.format(
+                                    "Action at point %d failed: %s",
+                                    i,
+                                    tostring(action_error)
+                                ))
+                            end
+                        end
+
                         if point.wait_time and point.wait_time > 0 then
                             local start_time = tick()
                             while tick() - start_time < point.wait_time and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
@@ -16462,6 +16938,100 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end
 
+            --// Gorpig detector \\--
+            -- Watches for anything named "gorpig" around the player while a path is
+            -- running and pushes it into the log in the Bot Path tab.
+            local function gorpig_log_push(text)
+                trinket_bot.gorpig_log = trinket_bot.gorpig_log or {}
+                table.insert(trinket_bot.gorpig_log, 1, string.format("[%s] %s", os.date("%H:%M:%S"), text))
+
+                while #trinket_bot.gorpig_log > 8 do
+                    table.remove(trinket_bot.gorpig_log)
+                end
+
+                local label = trinket_bot.gorpig_log_label
+                if label and label.SetText then
+                    if #trinket_bot.gorpig_log > 0 then
+                        label:SetText(table.concat(trinket_bot.gorpig_log, "\n"))
+                    else
+                        label:SetText("No detections yet.")
+                    end
+                end
+            end
+            trinket_bot.gorpig_log_push = gorpig_log_push
+
+            local function gorpig_scan()
+                local character = plr.Character
+                local hrp = character and FindFirstChild(character, "HumanoidRootPart")
+                if not hrp then
+                    return {}
+                end
+
+                local range = trinket_bot.gorpig_range or 150
+                local found = {}
+
+                for _, object in next, ws:GetDescendants() do
+                    local is_model = object:IsA("Model")
+                    local name_matches = is_model and object.Name:lower():find("gorpig", 1, true) ~= nil
+
+                    if name_matches then
+                        -- Skip models nested inside another gorpig model (it is the
+                        -- same entity, we only want to report it once).
+                        local parent = object.Parent
+                        local nested = parent
+                            and parent:IsA("Model")
+                            and parent.Name:lower():find("gorpig", 1, true) ~= nil
+
+                        if not nested then
+                            local root = object.PrimaryPart
+                                or FindFirstChild(object, "HumanoidRootPart")
+                                or FindFirstChild(object, "Head")
+
+                            if root and root:IsA("BasePart") then
+                                local distance = (root.Position - hrp.Position).Magnitude
+                                if distance <= range then
+                                    table.insert(found, { model = object, distance = distance })
+                                end
+                            end
+                        end
+                    end
+                end
+
+                return found
+            end
+
+            trinket_bot.gorpig_last_seen = setmetatable({}, { __mode = "k" })
+
+            task.spawn(function()
+                while true do
+                    task.wait(1)
+
+                    if trinket_bot.gorpig_enabled and trinket_bot.path_running then
+                        local ok, found = pcall(gorpig_scan)
+                        if ok and found then
+                            local now = tick()
+
+                            for _, entry in ipairs(found) do
+                                local last_seen = trinket_bot.gorpig_last_seen[entry.model]
+                                if not last_seen or now - last_seen > 20 then
+                                    trinket_bot.gorpig_last_seen[entry.model] = now
+                                    gorpig_log_push(string.format(
+                                        "%s  (%.0f studs)",
+                                        entry.model.Name,
+                                        entry.distance
+                                    ))
+                                    library:Notify(string.format(
+                                        "Gorpig detected: %s (%.0f studs)",
+                                        entry.model.Name,
+                                        entry.distance
+                                    ))
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+
             local group_trinket_bot = Tabs.Botting:AddLeftGroupbox("Trinket Bot")
 
             group_trinket_bot:AddInput("PointWaitTime", {
@@ -16822,6 +17392,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Tooltip = "Bot will instantly serverhop if a player is within this range (bypasses all other checks, 0 = disabled)"
             })
 
+            group_trinket_bot:AddSlider("GorpigProximity", {
+                Text = "Gorpig Proximity (studs)",
+                Default = 150,
+                Min = 10,
+                Max = 1000,
+                Rounding = 0,
+                Compact = true,
+                Tooltip = "Range the gorpig detector watches while botting",
+                Callback = function(value)
+                    trinket_bot.gorpig_range = value
+                end
+            })
+            trinket_bot.gorpig_range = 150
+
             group_trinket_bot:AddSlider("MinPlayerCount", {
                 Text = "Min Player Count",
                 Default = 0,
@@ -16987,7 +17571,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             wait_for_trinket = point_data.wait_for_trinket or false,
                             wait_time = point_data.wait_time or 0,
                             is_gate_point = point_data.is_gate_point or false,
-                            gate_location = point_data.gate_location
+                            gate_location = point_data.gate_location,
+                            action = point_data.action
                         })
                     end
 
@@ -17817,9 +18402,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             })
 
-            group_trinket_config:AddButton({
-                Text = "Save Path",
-                Func = function()
+            local function save_current_path_file()
                     local path_name = Options.PathName and Options.PathName.Value or ""
                     if path_name == "" then
                         library:Notify("Please enter a path name!")
@@ -17853,7 +18436,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             wait_for_trinket = point.wait_for_trinket,
                             wait_time = point.wait_time or 0,
                             is_gate_point = point.is_gate_point or false,
-                            gate_location = point.gate_location
+                            gate_location = point.gate_location,
+                            action = point.action
                         })
                     end
 
@@ -17909,7 +18493,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     else
                         library:Notify("Failed to save path: " .. tostring(err))
                     end
-                end
+            end
+
+            group_trinket_config:AddButton({
+                Text = "Save Path",
+                Tooltip = "Saves the current points and bot settings under Path Name",
+                Func = save_current_path_file
             })
 
             group_trinket_config:AddButton({
@@ -18449,6 +19038,30 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end)
             end
 
+            local group_gorpig = Tabs.Botting:AddRightGroupbox("Gorpig Detector")
+
+            group_gorpig:AddToggle("GorpigDetector", {
+                Text = "Gorpig Detector",
+                Default = false,
+                Tooltip = "Logs gorpigs inside the Gorpig Proximity range while botting",
+                Callback = function(value)
+                    trinket_bot.gorpig_enabled = value
+                    gorpig_log_push(value and "Detector enabled" or "Detector disabled")
+                end
+            })
+
+            trinket_bot.gorpig_log_label = group_gorpig:AddLabel("No detections yet.", true)
+
+            group_gorpig:AddButton({
+                Text = "Clear Gorpig Log",
+                Func = function()
+                    trinket_bot.gorpig_log = {}
+                    if trinket_bot.gorpig_log_label then
+                        trinket_bot.gorpig_log_label:SetText("No detections yet.")
+                    end
+                end
+            })
+
             task.spawn(setup_backpack_monitoring)
             auto_drop_char_connection = utility:Connection(plr.CharacterAdded, function()
                 task.wait(2.5)
@@ -18463,6 +19076,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 apply_settings = apply_settings,
                 update_visualizations = update_visualizations,
                 execute_path = ExecutePath,
+                save_current_path = save_current_path_file,
                 folder = "Tagged/trinket_paths",
             }
         end
@@ -19760,6 +20374,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         wait_time = point.wait_time or 0,
                         is_gate_point = point.is_gate_point or false,
                         gate_location = point.gate_location,
+                        action = point.action and {
+                            type = point.action.type,
+                            value = point.action.value,
+                        } or nil,
                     })
                 end
                 return serialized
@@ -19771,62 +20389,32 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         makefolder(POINTS_FOLDER)
                     end
                 end
+
+                local lua_folder = POINTS_FOLDER .. "/lua"
+                if isfolder and makefolder and not isfolder(lua_folder) then
+                    pcall(makefolder, lua_folder)
+                end
             end
 
+            pcall(ensure_folder)
+
+            -- Single save implementation: the bot block owns it (so it can snapshot the
+            -- bot settings too), and both the editor Save button and Config use it.
             local function save_current_path()
-                local path_name = Options.PathName and Options.PathName.Value or ""
-                if not path_name or path_name == "" then
-                    library:Notify("Enter a path name in Trinket Bot Config first")
+                local api = path_api()
+                if not api.save_current_path then
+                    library:Notify("Path saver not available")
                     return false
                 end
 
-                local points = get_points()
-                if #points == 0 then
-                    library:Notify("No points to save")
-                    return false
-                end
-
-                if not writefile then
-                    library:Notify("writefile not supported!")
-                    return false
-                end
-
-                ensure_folder()
-
-                local file_path = POINTS_FOLDER .. "/" .. path_name .. ".json"
-                local existed = isfile and isfile(file_path)
-
-                -- Keep an existing settings block so saving points never wipes bot config.
-                local settings = nil
-                if existed and readfile then
-                    local ok, decoded = pcall(function()
-                        return httpService:JSONDecode(readfile(file_path))
-                    end)
-                    if ok and decoded then
-                        settings = decoded.settings
-                    end
-                end
-
-                local ok, err = pcall(function()
-                    writefile(file_path, httpService:JSONEncode({
-                        points = serialize_points(points),
-                        settings = settings,
-                    }))
-                end)
-
+                local ok, result = pcall(api.save_current_path)
                 if not ok then
-                    library:Notify("Failed to save path: " .. tostring(err))
+                    library:Notify("Failed to save path: " .. tostring(result))
                     return false
                 end
 
                 refresh_saved_paths()
-                library:Notify(string.format(
-                    "%s path '%s' with %d points",
-                    existed and "Overwrote" or "Saved",
-                    path_name,
-                    #points
-                ))
-                return true
+                return result
             end
 
             --// Small window helpers \\--
@@ -19854,6 +20442,22 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 { key = "OPTIONS", x = 374, w = 118 },
                 { key = "ACTIONS", x = 492, w = 96, centered = true },
             }
+
+            -- Point types that run an action instead of just walking somewhere.
+            -- "value" is whatever the OPTIONS cell edits for that type.
+            local ACTION_DEFS = {
+                { type = "lua",        label = "LUA",     color = Color3.fromRGB(116, 170, 255), value_label = "file name" },
+                { type = "talk",       label = "TALK",    color = Color3.fromRGB(122, 220, 122), value_label = "npc name" },
+                { type = "equip",      label = "EQUIP",   color = Color3.fromRGB(196, 156, 255), value_label = "tool name" },
+                { type = "wait",       label = "WAIT",    color = Color3.fromRGB(255, 214, 81),  value_label = "seconds" },
+                { type = "leftclick",  label = "L-CLICK", color = Color3.fromRGB(180, 180, 180), value_label = nil },
+                { type = "rightclick", label = "R-CLICK", color = Color3.fromRGB(180, 180, 180), value_label = nil },
+            }
+
+            local ACTION_BY_TYPE = {}
+            for _, def in ipairs(ACTION_DEFS) do
+                ACTION_BY_TYPE[def.type] = def
+            end
 
             local function build_window()
                 if editor.window and editor.window.Parent then
@@ -19941,24 +20545,44 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         return
                     end
 
-                    local start = input.Position
-                    local origin = window.Position
-                    local connection
-                    connection = input.Changed:Connect(function()
+                    -- Drive the move from RenderStepped with a stored cursor delta.
+                    -- Input.Changed only fires when the OS reports a new position and
+                    -- lags behind the renderer, which is what made the drag choppy.
+                    local start_mouse = uis:GetMouseLocation()
+                    local start_position = window.Position
+                    local drag_connection
+
+                    local function stop_dragging()
+                        if drag_connection then
+                            drag_connection:Disconnect()
+                            drag_connection = nil
+                        end
+                    end
+
+                    local end_connection
+                    end_connection = input.Changed:Connect(function()
                         if input.UserInputState == Enum.UserInputState.End then
-                            if connection then
-                                connection:Disconnect()
-                                connection = nil
+                            stop_dragging()
+                            if end_connection then
+                                end_connection:Disconnect()
+                                end_connection = nil
                             end
+                        end
+                    end)
+
+                    stop_dragging()
+                    drag_connection = rs.RenderStepped:Connect(function()
+                        if not window.Parent then
+                            stop_dragging()
                             return
                         end
 
-                        local delta = input.Position - start
+                        local delta = uis:GetMouseLocation() - start_mouse
                         window.Position = UDim2.new(
-                            origin.X.Scale,
-                            origin.X.Offset + delta.X,
-                            origin.Y.Scale,
-                            origin.Y.Offset + delta.Y
+                            start_position.X.Scale,
+                            start_position.X.Offset + delta.X,
+                            start_position.Y.Scale,
+                            start_position.Y.Offset + delta.Y
                         )
                     end)
                 end)
@@ -20080,6 +20704,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     for index, point in ipairs(points) do
                         local selected = editor.selected == index
+                        local point_action = point.action
+                        local action_def = point_action and point_action.type and ACTION_BY_TYPE[point_action.type] or nil
+
+                        local type_text, type_color = "POINT", fontColor
+                        if action_def then
+                            type_text, type_color = action_def.label, action_def.color
+                        elseif point.is_gate_point then
+                            type_text, type_color = "GATE", Color3.fromRGB(255, 214, 81)
+                        elseif point.wait_for_trinket then
+                            type_text, type_color = "TRINKET", Color3.fromRGB(100, 170, 255)
+                        end
+
                         local row = create("Frame", {
                             Size = UDim2.new(1, -4, 0, 22),
                             BackgroundColor3 = (selected or index % 2 == 0) and mainColor or background,
@@ -20110,13 +20746,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end)
 
                         -- TYPE
-                        local isGate = point.is_gate_point
                         create("TextLabel", {
                             BackgroundTransparency = 1,
                             Position = UDim2.fromOffset(26, 0),
                             Size = UDim2.fromOffset(82, 22),
-                            Text = isGate and "GATE" or "POINT",
-                            TextColor3 = isGate and Color3.fromRGB(255, 214, 81) or fontColor,
+                            Text = type_text,
+                            TextColor3 = type_color,
                             TextSize = 11,
                             FontFace = fontFace,
                             TextXAlignment = Enum.TextXAlignment.Left,
@@ -20141,18 +20776,22 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             ZIndex = 2,
                         }, row)
 
-                        -- AREA (gate location, editable)
+                        -- AREA (gate location, editable on walk/gate points)
+                        local area_editable = action_def == nil
                         local areaBox = create("TextBox", {
                             Position = UDim2.fromOffset(256, 2),
                             Size = UDim2.fromOffset(114, 18),
                             BackgroundColor3 = background,
                             BorderSizePixel = 0,
                             Text = point.gate_location or "-",
-                            TextColor3 = Color3.fromRGB(122, 220, 122),
+                            PlaceholderText = "gate area",
+                            TextColor3 = point.gate_location and Color3.fromRGB(122, 220, 122)
+                                or Color3.fromRGB(120, 120, 120),
                             TextSize = 11,
                             FontFace = fontFace,
                             TextXAlignment = Enum.TextXAlignment.Left,
                             ClearTextOnFocus = false,
+                            TextEditable = area_editable,
                             ZIndex = 3,
                         }, row)
                         create("UICorner", { CornerRadius = UDim.new(0, 3) }, areaBox)
@@ -20161,18 +20800,36 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             PaddingRight = UDim.new(0, 4),
                         }, areaBox)
 
-                        -- OPTIONS (wait time, editable)
+                        -- OPTIONS (wait seconds, or the action's argument)
+                        local options_text
+                        local options_editable
+                        if action_def then
+                            if action_def.value_label then
+                                options_text = tostring(point_action.value or "")
+                                options_editable = true
+                            else
+                                options_text = "-"
+                                options_editable = false
+                            end
+                        else
+                            options_text = tostring(point.wait_time or 0)
+                            options_editable = true
+                        end
+
                         local optionBox = create("TextBox", {
                             Position = UDim2.fromOffset(374, 2),
                             Size = UDim2.fromOffset(114, 18),
                             BackgroundColor3 = background,
                             BorderSizePixel = 0,
-                            Text = tostring(point.wait_time or 0),
-                            TextColor3 = fontColor,
+                            Text = options_text,
+                            PlaceholderText = action_def and action_def.value_label or "seconds",
+                            TextColor3 = action_def and (action_def.color)
+                                or fontColor,
                             TextSize = 11,
                             FontFace = fontFace,
                             TextXAlignment = Enum.TextXAlignment.Left,
                             ClearTextOnFocus = false,
+                            TextEditable = options_editable,
                             ZIndex = 3,
                         }, row)
                         create("UICorner", { CornerRadius = UDim.new(0, 3) }, optionBox)
@@ -20182,6 +20839,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         }, optionBox)
 
                         areaBox.FocusLost:Connect(function()
+                            if not area_editable then
+                                return
+                            end
+
                             local text = areaBox.Text
                             if text == "-" then
                                 text = ""
@@ -20200,7 +20861,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end)
 
                         optionBox.FocusLost:Connect(function()
-                            point.wait_time = tonumber(optionBox.Text) or 0
+                            if not options_editable then
+                                return
+                            end
+
+                            if action_def then
+                                point_action.value = optionBox.Text
+                            else
+                                point.wait_time = tonumber(optionBox.Text) or 0
+                            end
+
                             render_rows()
                             update_visualizations()
                         end)
@@ -20294,21 +20964,75 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     library:Notify(string.format("Added point %d", at))
                 end)
 
+                local function close_action_menu()
+                    if editor.action_menu then
+                        editor.action_menu:Destroy()
+                        editor.action_menu = nil
+                    end
+                end
+
                 toolbar_button(leftBar, "+ Action", 62, 2, function()
-                    local character = plr.Character
-                    local hrp = character and FindFirstChild(character, "HumanoidRootPart")
-                    if not hrp then
-                        library:Notify("Character not found!")
+                    if editor.action_menu and editor.action_menu.Parent then
+                        close_action_menu()
                         return
                     end
 
-                    local at = insert_after_selection({
-                        position = hrp.Position,
-                        wait_for_trinket = false,
-                        wait_time = 1,
-                        is_gate_point = false,
-                    })
-                    library:Notify(string.format("Added action point %d (waits 1s)", at))
+                    local menu = create("Frame", {
+                        Position = UDim2.fromOffset(82, 52),
+                        Size = UDim2.fromOffset(150, #ACTION_DEFS * 20 + 6),
+                        BackgroundColor3 = mainColor,
+                        BorderSizePixel = 0,
+                        ZIndex = 20,
+                    }, window)
+                    create("UICorner", { CornerRadius = UDim.new(0, 4) }, menu)
+                    create("UIStroke", { Color = outline, Thickness = 1 }, menu)
+
+                    for menu_index, def in ipairs(ACTION_DEFS) do
+                        local entry = create("TextButton", {
+                            Position = UDim2.fromOffset(3, 3 + (menu_index - 1) * 20),
+                            Size = UDim2.new(1, -6, 0, 18),
+                            BackgroundTransparency = 1,
+                            BackgroundColor3 = background,
+                            Text = def.label,
+                            TextColor3 = def.color,
+                            TextSize = 11,
+                            FontFace = fontFace,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            AutoButtonColor = false,
+                            ZIndex = 21,
+                        }, menu)
+                        create("UIPadding", { PaddingLeft = UDim.new(0, 4) }, entry)
+
+                        entry.MouseEnter:Connect(function()
+                            entry.BackgroundTransparency = 0.85
+                        end)
+                        entry.MouseLeave:Connect(function()
+                            entry.BackgroundTransparency = 1
+                        end)
+
+                        entry.MouseButton1Click:Connect(function()
+                            close_action_menu()
+
+                            local character = plr.Character
+                            local hrp = character and FindFirstChild(character, "HumanoidRootPart")
+                            if not hrp then
+                                library:Notify("Character not found!")
+                                return
+                            end
+
+                            local at = insert_after_selection({
+                                position = hrp.Position,
+                                wait_for_trinket = false,
+                                wait_time = 0,
+                                is_gate_point = false,
+                                action = { type = def.type, value = "" },
+                            })
+
+                            library:Notify(string.format("Added %s point %d", def.label, at))
+                        end)
+                    end
+
+                    editor.action_menu = menu
                 end)
 
                 toolbar_button(leftBar, "Copy", 44, 3, function()
@@ -20324,6 +21048,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         wait_time = point.wait_time or 0,
                         is_gate_point = point.is_gate_point or false,
                         gate_location = point.gate_location,
+                        action = point.action and { type = point.action.type, value = point.action.value } or nil,
                     }
                     library:Notify(string.format("Copied point %d", index))
                 end)
@@ -20340,6 +21065,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         wait_time = editor.clipboard.wait_time,
                         is_gate_point = editor.clipboard.is_gate_point,
                         gate_location = editor.clipboard.gate_location,
+                        action = editor.clipboard.action and {
+                            type = editor.clipboard.action.type,
+                            value = editor.clipboard.action.value,
+                        } or nil,
                     })
                     library:Notify(string.format("Pasted point at %d", at))
                 end)
@@ -20365,6 +21094,30 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return window
             end
 
+            -- Rebuilds the floating window with the current accent/font. Called by
+            -- applyAccent/applyUIFont, which live outside this block.
+            editor.refresh_theme = function()
+                local existing = editor.window
+                if not (existing and existing.Parent) then
+                    return
+                end
+
+                local was_visible = existing.Visible
+
+                if editor.action_menu then
+                    editor.action_menu:Destroy()
+                    editor.action_menu = nil
+                end
+
+                existing:Destroy()
+                editor.window = nil
+
+                local rebuilt = build_window()
+                if rebuilt then
+                    rebuilt.Visible = was_visible
+                end
+            end
+
             --// Path Files groupbox (bottom of the Bot Path tab) \\--
             local group_path_files = Tabs.Botting:AddRightGroupbox("Path Files")
 
@@ -20377,13 +21130,6 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         window.Visible = true
                         render_rows()
                     end
-                end
-            })
-
-            group_path_files:AddButton({
-                Text = "Save Current Path",
-                Func = function()
-                    save_current_path()
                 end
             })
 
@@ -20471,34 +21217,37 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         do
             local group_ui = Tabs.Interface:AddLeftGroupbox("UI Settings")
 
+            local accent_default = shared.theme.accent or Color3.fromRGB(0, 199, 192)
+            if ui_state.accent then
+                local ok, parsed = pcall(Color3.fromHex, ui_state.accent)
+                if ok and typeof(parsed) == "Color3" then
+                    accent_default = parsed
+                end
+            end
+
             group_ui:AddLabel("Accent Color"):AddColorPicker("AccentColor", {
-                Default = shared.theme.accent or Color3.fromRGB(0, 199, 192),
+                Default = accent_default,
                 Title = "Accent Color",
                 Transparency = 0,
                 Callback = function(value)
                     applyAccent(value)
+                    write_ui_state({ accent = value:ToHex() })
                 end
             })
 
             group_ui:AddDropdown("UIFont", {
                 Text = "UI Font",
                 Values = { "Gotham", "GothamBold", "GothamMedium", "Code", "Roboto", "RobotoMono", "SourceSans", "Ubuntu", "Arial", "Bodoni", "Cartoon", "Fantasy", "SciFi", "Antique", "Arcade", "Bangers", "Creepster", "DenkOne", "Fondamento", "FredokaOne", "Garamond", "GrenzeGotisch", "HighwayGothic", "IndieFlower", "JosefinSans", "Jura", "Kalam", "LuckiestGuy", "Merriweather", "Michroma", "Nunito", "Oswald", "PatrickHand", "PermanentMarker", "PressStart2P", "Sarpanch", "SpecialElite", "Zekton" },
-                Default = "Gotham",
+                Default = ui_state.font or "Code",
                 Callback = function(value)
-                    local ok = pcall(function()
-                        library:SetFont(Enum.Font[value])
-                    end)
-                    if not ok then
-                        pcall(function()
-                            library:SetFont(Enum.Font.Gotham)
-                        end)
-                    end
+                    applyUIFont(value)
+                    write_ui_state({ font = value })
                 end
             })
 
             group_ui:AddSlider("UIScale", {
                 Text = "UI Scale (%)",
-                Default = 90,
+                Default = ui_state.scale or 90,
                 Min = 70,
                 Max = 110,
                 Rounding = 0,
@@ -20507,6 +21256,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     pcall(function()
                         library:SetDPIScale(value)
                     end)
+                    write_ui_state({ scale = value })
                 end
             })
 
@@ -20521,6 +21271,27 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end
             })
+
+            -- Reapply the saved visual prefs once every tab has been built, so the
+            -- font sweep covers all of them.
+            task.defer(function()
+                if ui_state.accent then
+                    pcall(function()
+                        applyAccent(Color3.fromHex(ui_state.accent))
+                    end)
+                end
+
+                if ui_state.font then
+                    pcall(applyUIFont, ui_state.font)
+                end
+
+                if ui_state.scale then
+                    pcall(function()
+                        library:SetDPIScale(ui_state.scale)
+                    end)
+                end
+            end)
+
             group_ui:AddDivider()
 
             group_ui:AddLabel("General Settings")
