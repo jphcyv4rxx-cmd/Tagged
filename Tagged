@@ -7456,8 +7456,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             Movement = window:AddTab("Movement", "wind"),
             Automation = window:AddTab("Automation", "cog"),
             Misc = window:AddTab("Misc", "settings"),
-            Botting = window:AddTab("Botting", "bot"),
-            PathEditor = window:AddTab("Path Editor", "route"),
+            Botting = window:AddTab("Bot Path", "bot"),
             Macros = window:AddTab("Macros", "play"),
             Interface = window:AddTab("Interface", "monitor"),
             Config = window:AddTab("Config", "save")
@@ -19675,42 +19674,33 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end)
         end
 
-        --// Path Editor \\--
+        --// Bot Path — path files + floating path editor \\--
         do
-            local group_path_points = Tabs.PathEditor:AddLeftGroupbox("Path Points")
-            local group_path_edit = Tabs.PathEditor:AddLeftGroupbox("Edit Point")
-            local group_path_files = Tabs.PathEditor:AddRightGroupbox("Path Files")
-            local group_path_run = Tabs.PathEditor:AddRightGroupbox("Run / Debug")
-
-            local path_editor = {
-                selected_index = nil,
-                points = {},
-                name = "",
-                labels = {},
-                by_index = {},
-                refreshing = false,
-            }
-            cheat_client.path_editor = path_editor
-
             local httpService = Services.HttpService
             local POINTS_FOLDER = "Tagged/trinket_paths"
 
             local function path_api()
-                return cheat_client.path_api
+                return cheat_client.path_api or {}
             end
 
             local function get_saved_paths()
                 local api = path_api()
-                if api and api.get_saved_paths then
-                    return api.get_saved_paths()
+                if api.get_saved_paths then
+                    local ok, result = pcall(api.get_saved_paths)
+                    if ok and type(result) == "table" then
+                        return result
+                    end
                 end
                 return {}
             end
 
             local function load_path_by_name(path_name)
                 local api = path_api()
-                if api and api.load_path_by_name then
-                    return api.load_path_by_name(path_name)
+                if api.load_path_by_name then
+                    local ok, result = pcall(api.load_path_by_name, path_name)
+                    if ok then
+                        return result
+                    end
                 end
                 library:Notify("Path loader not available")
                 return false
@@ -19718,660 +19708,764 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             local function update_visualizations()
                 local api = path_api()
-                if api and api.update_visualizations then
-                    return api.update_visualizations()
+                if api.update_visualizations then
+                    pcall(api.update_visualizations)
                 end
             end
 
             local function run_path(test_mode)
                 local api = path_api()
-                if api and api.execute_path then
+                if api.execute_path then
                     task.spawn(api.execute_path, test_mode)
                 else
                     library:Notify("Path runner not available")
                 end
             end
 
-            -- Prefer the live bot path if it already has points.
+            local editor = {
+                window = nil,
+                screenGui = nil,
+                selected = nil,
+                clipboard = nil,
+                points = {},
+            }
+            cheat_client.path_editor = editor
+
             local function get_points()
-                if cheat_client.trinket_bot and #cheat_client.trinket_bot.path_points > 0 then
-                    return cheat_client.trinket_bot.path_points
+                local bot = cheat_client.trinket_bot
+                if bot then
+                    bot.path_points = bot.path_points or {}
+                    return bot.path_points
                 end
-                return path_editor.points
+                editor.points = editor.points or {}
+                return editor.points
             end
-
-            local function refresh_points_dropdown()
-                local values = {}
-                local labels = {}
-                local by_index = {}
-                local points = get_points()
-                for i, point in ipairs(points) do
-                    local tag = ""
-                    if point.is_gate_point then
-                        tag = string.format("  [gate: %s]", point.gate_location or "?")
-                    elseif point.wait_for_trinket then
-                        tag = "  [wait trinket]"
-                    elseif (point.wait_time or 0) > 0 then
-                        tag = string.format("  [%gs]", point.wait_time)
-                    end
-
-                    local label = string.format("%d. (%.0f, %.0f, %.0f)%s", i, point.position.X, point.position.Y, point.position.Z, tag)
-                    values[i] = label
-                    labels[label] = i
-                    by_index[i] = label
-                end
-
-                -- The dropdown stores an ARRAY of labels, so selection is tracked by
-                -- label string (not the numeric index). Keep both maps around.
-                path_editor.labels = labels
-                path_editor.by_index = by_index
-
-                if Options.GeneratedPointList then
-                    -- SetValues/SetValue both fire the callback; suppress it so a refresh
-                    -- does not wipe the user's current selection.
-                    path_editor.refreshing = true
-                    Options.GeneratedPointList:SetValues(values)
-                    Options.GeneratedPointList:SetValue(by_index[path_editor.selected_index])
-                    path_editor.refreshing = false
-                end
-            end
-
-            local function apply_editor_fields()
-                local points = get_points()
-                if not path_editor.selected_index or not points[path_editor.selected_index] then
-                    return
-                end
-
-                local point = points[path_editor.selected_index]
-                if Options.PathEditWaitTime then
-                    Options.PathEditWaitTime:SetValue(tostring(point.wait_time or 0))
-                end
-                if Options.PathEditGateLocation then
-                    Options.PathEditGateLocation:SetValue(point.gate_location or "")
-                end
-                if Toggles.PathEditWaitTrinket then
-                    Toggles.PathEditWaitTrinket:SetValue(point.wait_for_trinket or false)
-                end
-                if Toggles.PathEditIsGate then
-                    Toggles.PathEditIsGate:SetValue(point.is_gate_point or false)
-                end
-            end
-
-            --// Left: generated point list \\--
-            group_path_points:AddDropdown("GeneratedPointList", {
-                Text = "Points",
-                Values = {},
-                AllowNull = true,
-                Multi = false,
-                Searchable = false,
-                Default = nil,
-                Callback = function(value)
-                    if path_editor.refreshing then
-                        return
-                    end
-
-                    if not value then
-                        path_editor.selected_index = nil
-                        return
-                    end
-
-                    local idx = path_editor.labels and path_editor.labels[value]
-                    path_editor.selected_index = idx
-                    if idx then
-                        apply_editor_fields()
-                    end
-                end
-            })
-
-            group_path_points:AddButton({
-                Text = "Refresh List",
-                Func = function()
-                    refresh_points_dropdown()
-                    library:Notify("Point list refreshed")
-                end
-            })
-
-            group_path_points:AddButton({
-                Text = "Select Nearest",
-                Tooltip = "Selects the path point closest to you",
-                Func = function()
-                    if not plr.Character or not FindFirstChild(plr.Character, "HumanoidRootPart") then
-                        library:Notify("Character not found!")
-                        return
-                    end
-
-                    local points = get_points()
-                    local my_pos = plr.Character.HumanoidRootPart.Position
-                    local best_index, best_dist = nil, math.huge
-                    for i, point in ipairs(points) do
-                        local dist = (point.position - my_pos).Magnitude
-                        if dist < best_dist then
-                            best_index, best_dist = i, dist
-                        end
-                    end
-
-                    if best_index then
-                        path_editor.selected_index = best_index
-                        refresh_points_dropdown()
-                        apply_editor_fields()
-                        library:Notify(string.format("Selected point %d (%.1f studs away)", best_index, best_dist))
-                    else
-                        library:Notify("No points in this path")
-                    end
-                end
-            })
-
-            group_path_points:AddDivider()
-
-            group_path_points:AddButton({
-                Text = "Move Selected To Me",
-                Tooltip = "Moves the selected point to your current position",
-                Func = function()
-                    if not path_editor.selected_index then
-                        library:Notify("Select a point first")
-                        return
-                    end
-                    if not plr.Character or not FindFirstChild(plr.Character, "HumanoidRootPart") then
-                        library:Notify("Character not found!")
-                        return
-                    end
-
-                    local points = get_points()
-                    local point = points[path_editor.selected_index]
-                    if not point then
-                        library:Notify("Selected point no longer exists")
-                        return
-                    end
-
-                    point.position = plr.Character.HumanoidRootPart.Position
-                    refresh_points_dropdown()
-                    if cheat_client.trinket_bot then update_visualizations() end
-                    library:Notify(string.format("Moved point %d to your position", path_editor.selected_index))
-                end
-            })
-
-            group_path_points:AddButton({
-                Text = "Insert Point At End",
-                Func = function()
-                    if not plr.Character or not FindFirstChild(plr.Character, "HumanoidRootPart") then
-                        library:Notify("Character not found!")
-                        return
-                    end
-
-                    local points = get_points()
-                    table.insert(points, {
-                        position = plr.Character.HumanoidRootPart.Position,
-                        wait_for_trinket = false,
-                        wait_time = tonumber(Options.PathEditWaitTime and Options.PathEditWaitTime.Value or "0") or 0,
-                        is_gate_point = false,
-                    })
-                    refresh_points_dropdown()
-                    if cheat_client.trinket_bot then update_visualizations() end
-                    library:Notify(string.format("Added point %d", #points))
-                end
-            })
-
-            group_path_points:AddButton({
-                Text = "Move Selected Up",
-                Func = function()
-                    local points = get_points()
-                    local i = path_editor.selected_index
-                    if not i or i <= 1 or not points[i] then
-                        library:Notify("Select a point that is not already first")
-                        return
-                    end
-
-                    points[i - 1], points[i] = points[i], points[i - 1]
-                    path_editor.selected_index = i - 1
-                    refresh_points_dropdown()
-                    if cheat_client.trinket_bot then update_visualizations() end
-                end
-            })
-
-            group_path_points:AddButton({
-                Text = "Move Selected Down",
-                Func = function()
-                    local points = get_points()
-                    local i = path_editor.selected_index
-                    if not i or not points[i] or i >= #points then
-                        library:Notify("Select a point that is not already last")
-                        return
-                    end
-
-                    points[i + 1], points[i] = points[i], points[i + 1]
-                    path_editor.selected_index = i + 1
-                    refresh_points_dropdown()
-                    if cheat_client.trinket_bot then update_visualizations() end
-                end
-            })
-
-            group_path_points:AddButton({
-                Text = "Delete Selected Point",
-                DoubleClick = true,
-                Func = function()
-                    local points = get_points()
-                    local i = path_editor.selected_index
-                    if not i or not points[i] then
-                        library:Notify("Select a point first")
-                        return
-                    end
-
-                    table.remove(points, i)
-                    path_editor.selected_index = nil
-                    refresh_points_dropdown()
-                    if cheat_client.trinket_bot then update_visualizations() end
-                    library:Notify(string.format("Deleted point %d. %d remaining", i, #points))
-                end
-            })
-
-            group_path_points:AddButton({
-                Text = "Clear All Points",
-                DoubleClick = true,
-                Func = function()
-                    if not cheat_client.trinket_bot then
-                        library:Notify("Trinket bot not available")
-                        return
-                    end
-
-                    cheat_client.trinket_bot.path_points = {}
-                    path_editor.points = {}
-                    path_editor.selected_index = nil
-                    refresh_points_dropdown()
-                    update_visualizations()
-                    library:Notify("Cleared all points")
-                end
-            })
-
-            --// Left lower: edit the selected point \\--
-            group_path_edit:AddInput("PathEditWaitTime", {
-                Default = "0",
-                Numeric = true,
-                Finished = false,
-                Text = "Wait Time (seconds)",
-                Tooltip = "How long the bot waits at this point",
-                Placeholder = "0"
-            })
-
-            group_path_edit:AddInput("PathEditGateLocation", {
-                Default = "",
-                Numeric = false,
-                Finished = false,
-                Text = "Gate Location",
-                Tooltip = "Gate destination for this point, e.g. 'Tundra 7'",
-                Placeholder = "e.g. Tundra 7"
-            })
-
-            group_path_edit:AddToggle("PathEditIsGate", {
-                Text = "Is Gate Point",
-                Default = false,
-            })
-
-            group_path_edit:AddToggle("PathEditWaitTrinket", {
-                Text = "Wait For Trinket",
-                Default = false,
-            })
-
-            group_path_edit:AddButton({
-                Text = "Apply To Selected Point",
-                Func = function()
-                    local points = get_points()
-                    local i = path_editor.selected_index
-                    if not i or not points[i] then
-                        library:Notify("Select a point first")
-                        return
-                    end
-
-                    local point = points[i]
-                    point.wait_time = tonumber(Options.PathEditWaitTime and Options.PathEditWaitTime.Value or "0") or 0
-                    point.gate_location = Options.PathEditGateLocation and Options.PathEditGateLocation.Value or ""
-                    point.is_gate_point = Toggles.PathEditIsGate and Toggles.PathEditIsGate.Value or false
-                    point.wait_for_trinket = Toggles.PathEditWaitTrinket and Toggles.PathEditWaitTrinket.Value or false
-
-                    if point.is_gate_point and (not point.gate_location or point.gate_location == "") then
-                        library:Notify("Gate point needs a gate location")
-                    end
-
-                    refresh_points_dropdown()
-                    if cheat_client.trinket_bot then update_visualizations() end
-                    library:Notify(string.format("Updated point %d", i))
-                end
-            })
-
-            group_path_edit:AddDivider()
-
-            group_path_edit:AddButton({
-                Text = "Teleport To Selected (local)",
-                Tooltip = "Locally moves your character to this point. Server may rubber-band you.",
-                Func = function()
-                    local points = get_points()
-                    local i = path_editor.selected_index
-                    if not i or not points[i] then
-                        library:Notify("Select a point first")
-                        return
-                    end
-                    if not plr.Character or not FindFirstChild(plr.Character, "HumanoidRootPart") then
-                        library:Notify("Character not found!")
-                        return
-                    end
-
-                    plr.Character.HumanoidRootPart.CFrame = CFrame.new(points[i].position + Vector3.new(0, 3, 0))
-                end
-            })
-
-            --// Right: file management \\--
-            group_path_files:AddInput("PathEditorName", {
-                Default = "",
-                Numeric = false,
-                Finished = true,
-                Text = "Path Name",
-                Placeholder = "my_path"
-            })
-
-            group_path_files:AddDropdown("PathEditorSavedPaths", {
-                Text = "Saved Paths",
-                Values = get_saved_paths(),
-                AllowNull = true,
-                Multi = false,
-                Searchable = true,
-                Default = nil,
-                Callback = function(value)
-                    if value and Options.PathEditorName then
-                        Options.PathEditorName:SetValue(value)
-                    end
-                end
-            })
 
             local function refresh_saved_paths()
                 local paths = get_saved_paths()
-                if Options.PathEditorSavedPaths then
-                    Options.PathEditorSavedPaths:SetValues(paths)
-                end
                 if Options.SavedPaths then
                     Options.SavedPaths:SetValues(paths)
                 end
                 return paths
             end
 
-            group_path_files:AddButton({
-                Text = "New Path",
-                Func = function()
-                    if not cheat_client.trinket_bot then
-                        library:Notify("Trinket bot not available")
+            local function serialize_points(points)
+                local serialized = {}
+                for _, point in ipairs(points) do
+                    table.insert(serialized, {
+                        x = point.position.X,
+                        y = point.position.Y,
+                        z = point.position.Z,
+                        wait_for_trinket = point.wait_for_trinket or false,
+                        wait_time = point.wait_time or 0,
+                        is_gate_point = point.is_gate_point or false,
+                        gate_location = point.gate_location,
+                    })
+                end
+                return serialized
+            end
+
+            local function ensure_folder()
+                if (not isfolder) or (not isfolder(POINTS_FOLDER)) then
+                    if makefolder then
+                        makefolder(POINTS_FOLDER)
+                    end
+                end
+            end
+
+            local function save_current_path()
+                local path_name = Options.PathName and Options.PathName.Value or ""
+                if not path_name or path_name == "" then
+                    library:Notify("Enter a path name in Trinket Bot Config first")
+                    return false
+                end
+
+                local points = get_points()
+                if #points == 0 then
+                    library:Notify("No points to save")
+                    return false
+                end
+
+                if not writefile then
+                    library:Notify("writefile not supported!")
+                    return false
+                end
+
+                ensure_folder()
+
+                local file_path = POINTS_FOLDER .. "/" .. path_name .. ".json"
+                local existed = isfile and isfile(file_path)
+
+                -- Keep an existing settings block so saving points never wipes bot config.
+                local settings = nil
+                if existed and readfile then
+                    local ok, decoded = pcall(function()
+                        return httpService:JSONDecode(readfile(file_path))
+                    end)
+                    if ok and decoded then
+                        settings = decoded.settings
+                    end
+                end
+
+                local ok, err = pcall(function()
+                    writefile(file_path, httpService:JSONEncode({
+                        points = serialize_points(points),
+                        settings = settings,
+                    }))
+                end)
+
+                if not ok then
+                    library:Notify("Failed to save path: " .. tostring(err))
+                    return false
+                end
+
+                refresh_saved_paths()
+                library:Notify(string.format(
+                    "%s path '%s' with %d points",
+                    existed and "Overwrote" or "Saved",
+                    path_name,
+                    #points
+                ))
+                return true
+            end
+
+            --// Small window helpers \\--
+            local function scheme(name, fallback)
+                local value = library and library.Scheme and library.Scheme[name]
+                return value or fallback
+            end
+
+            local function create(className, props, parent)
+                local object = Instance.new(className)
+                for property, value in pairs(props) do
+                    object[property] = value
+                end
+                object.Parent = parent
+                return object
+            end
+
+            local render_rows
+
+            local COLUMNS = {
+                { key = "#", x = 0, w = 26, centered = true },
+                { key = "TYPE", x = 26, w = 82 },
+                { key = "POSITION", x = 108, w = 148 },
+                { key = "AREA", x = 256, w = 118 },
+                { key = "OPTIONS", x = 374, w = 118 },
+                { key = "ACTIONS", x = 492, w = 96, centered = true },
+            }
+
+            local function build_window()
+                if editor.window and editor.window.Parent then
+                    return editor.window
+                end
+
+                local screen = editor.screenGui
+                if not (screen and screen.Parent) then
+                    screen = Instance.new("ScreenGui")
+                    screen.Name = "TaggedPathEditorGui"
+                    screen.ResetOnSpawn = false
+                    screen.DisplayOrder = 2000
+                    screen.IgnoreGuiInset = true
+
+                    local parented = pcall(function()
+                        screen.Parent = ui
+                    end)
+
+                    if (not parented) or (not screen.Parent) then
+                        pcall(function()
+                            screen.Parent = plr:WaitForChild("PlayerGui")
+                        end)
+                    end
+
+                    editor.screenGui = screen
+                end
+
+                local accent = scheme("AccentColor", Color3.fromRGB(0, 199, 192))
+                local background = scheme("BackgroundColor", Color3.fromRGB(27, 27, 27))
+                local mainColor = scheme("MainColor", Color3.fromRGB(34, 34, 34))
+                local outline = scheme("OutlineColor", Color3.fromRGB(46, 46, 46))
+                local fontColor = scheme("FontColor", Color3.new(1, 1, 1))
+                local fontFace = (library.Scheme and library.Scheme.Font) or Enum.Font.Code
+
+                local window = create("Frame", {
+                    Name = "TaggedPathEditor",
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    Position = UDim2.fromScale(0.5, 0.5),
+                    Size = UDim2.fromOffset(640, 380),
+                    BackgroundColor3 = background,
+                    BorderSizePixel = 0,
+                    Active = true,
+                }, screen)
+                create("UICorner", { CornerRadius = UDim.new(0, 6) }, window)
+                create("UIStroke", { Color = outline, Thickness = 1 }, window)
+
+                --// Header (drag handle + close) \\--
+                local header = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 24),
+                    BackgroundColor3 = accent,
+                    BorderSizePixel = 0,
+                    Active = true,
+                    ZIndex = 1,
+                }, window)
+                create("UICorner", { CornerRadius = UDim.new(0, 6) }, header)
+
+                local title = create("TextLabel", {
+                    BackgroundTransparency = 1,
+                    Position = UDim2.fromOffset(8, 0),
+                    Size = UDim2.new(1, -40, 1, 0),
+                    Text = "path editor (0)",
+                    TextColor3 = background,
+                    TextSize = 13,
+                    FontFace = fontFace,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 1,
+                }, header)
+
+                local closeButton = create("TextButton", {
+                    AnchorPoint = Vector2.new(1, 0),
+                    Position = UDim2.new(1, -4, 0, 0),
+                    Size = UDim2.fromOffset(22, 24),
+                    BackgroundTransparency = 1,
+                    Text = "X",
+                    TextColor3 = background,
+                    TextSize = 14,
+                    FontFace = fontFace,
+                    AutoButtonColor = false,
+                    ZIndex = 2,
+                }, header)
+
+                header.InputBegan:Connect(function(input)
+                    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+                        and input.UserInputType ~= Enum.UserInputType.Touch then
                         return
                     end
 
-                    cheat_client.trinket_bot.path_points = {}
-                    path_editor.points = {}
-                    path_editor.selected_index = nil
-                    refresh_points_dropdown()
+                    local start = input.Position
+                    local origin = window.Position
+                    local connection
+                    connection = input.Changed:Connect(function()
+                        if input.UserInputState == Enum.UserInputState.End then
+                            if connection then
+                                connection:Disconnect()
+                                connection = nil
+                            end
+                            return
+                        end
+
+                        local delta = input.Position - start
+                        window.Position = UDim2.new(
+                            origin.X.Scale,
+                            origin.X.Offset + delta.X,
+                            origin.Y.Scale,
+                            origin.Y.Offset + delta.Y
+                        )
+                    end)
+                end)
+
+                --// Toolbar \\--
+                local toolbar = create("Frame", {
+                    Position = UDim2.fromOffset(0, 24),
+                    Size = UDim2.new(1, 0, 0, 28),
+                    BackgroundColor3 = mainColor,
+                    BorderSizePixel = 0,
+                }, window)
+
+                local function toolbar_button(parent, text, width, order, callback)
+                    local button = create("TextButton", {
+                        Size = UDim2.fromOffset(width, 20),
+                        BackgroundColor3 = background,
+                        BorderSizePixel = 0,
+                        Text = text,
+                        TextColor3 = fontColor,
+                        TextSize = 11,
+                        FontFace = fontFace,
+                        LayoutOrder = order,
+                        AutoButtonColor = false,
+                    }, parent)
+                    create("UICorner", { CornerRadius = UDim.new(0, 3) }, button)
+                    create("UIStroke", { Color = outline, Thickness = 1 }, button)
+                    button.MouseButton1Click:Connect(callback)
+                    return button
+                end
+
+                local leftBar = create("Frame", {
+                    Position = UDim2.fromOffset(4, 4),
+                    Size = UDim2.fromOffset(0, 20),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    BackgroundTransparency = 1,
+                }, toolbar)
+                create("UIListLayout", {
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    Padding = UDim.new(0, 4),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                }, leftBar)
+
+                local rightBar = create("Frame", {
+                    AnchorPoint = Vector2.new(1, 0),
+                    Position = UDim2.new(1, -4, 0, 4),
+                    Size = UDim2.fromOffset(0, 20),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    BackgroundTransparency = 1,
+                }, toolbar)
+                create("UIListLayout", {
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    Padding = UDim.new(0, 4),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                }, rightBar)
+
+                --// Column headers \\--
+                local columnHeader = create("Frame", {
+                    Position = UDim2.fromOffset(4, 54),
+                    Size = UDim2.new(1, -8, 0, 18),
+                    BackgroundColor3 = mainColor,
+                    BorderSizePixel = 0,
+                }, window)
+
+                for _, column in ipairs(COLUMNS) do
+                    create("TextLabel", {
+                        BackgroundTransparency = 1,
+                        Position = UDim2.fromOffset(column.x, 0),
+                        Size = UDim2.fromOffset(column.w, 18),
+                        Text = column.key,
+                        TextColor3 = accent,
+                        TextSize = 11,
+                        FontFace = fontFace,
+                        TextXAlignment = column.centered and Enum.TextXAlignment.Center
+                            or Enum.TextXAlignment.Left,
+                    }, columnHeader)
+                end
+
+                --// Rows \\--
+                local body = create("ScrollingFrame", {
+                    Position = UDim2.fromOffset(4, 74),
+                    Size = UDim2.new(1, -8, 1, -78),
+                    BackgroundColor3 = background,
+                    BorderSizePixel = 0,
+                    CanvasSize = UDim2.fromScale(0, 0),
+                    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                    ScrollBarThickness = 3,
+                    ScrollBarImageColor3 = outline,
+                }, window)
+                create("UIListLayout", {
+                    Padding = UDim.new(0, 2),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                }, body)
+
+                local function reorder(from, to)
+                    local points = get_points()
+                    if from == to or not points[from] or not points[to] then
+                        return
+                    end
+
+                    points[from], points[to] = points[to], points[from]
+
+                    if editor.selected == from then
+                        editor.selected = to
+                    elseif editor.selected == to then
+                        editor.selected = from
+                    end
+                end
+
+                render_rows = function()
+                    local points = get_points()
+
+                    for _, child in ipairs(body:GetChildren()) do
+                        if child:IsA("Frame") then
+                            child:Destroy()
+                        end
+                    end
+
+                    title.Text = string.format("path editor (%d)", #points)
+
+                    for index, point in ipairs(points) do
+                        local selected = editor.selected == index
+                        local row = create("Frame", {
+                            Size = UDim2.new(1, -4, 0, 22),
+                            BackgroundColor3 = (selected or index % 2 == 0) and mainColor or background,
+                            BorderSizePixel = 0,
+                            LayoutOrder = index,
+                            ZIndex = 1,
+                        }, body)
+
+                        if selected then
+                            create("UIStroke", { Color = accent, Thickness = 1 }, row)
+                        end
+
+                        -- # (click to select)
+                        local numberButton = create("TextButton", {
+                            BackgroundTransparency = 1,
+                            Position = UDim2.fromOffset(0, 0),
+                            Size = UDim2.fromOffset(26, 22),
+                            Text = tostring(index),
+                            TextColor3 = selected and accent or fontColor,
+                            TextSize = 11,
+                            FontFace = fontFace,
+                            AutoButtonColor = false,
+                            ZIndex = 2,
+                        }, row)
+                        numberButton.MouseButton1Click:Connect(function()
+                            editor.selected = index
+                            render_rows()
+                        end)
+
+                        -- TYPE
+                        local isGate = point.is_gate_point
+                        create("TextLabel", {
+                            BackgroundTransparency = 1,
+                            Position = UDim2.fromOffset(26, 0),
+                            Size = UDim2.fromOffset(82, 22),
+                            Text = isGate and "GATE" or "POINT",
+                            TextColor3 = isGate and Color3.fromRGB(255, 214, 81) or fontColor,
+                            TextSize = 11,
+                            FontFace = fontFace,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            ZIndex = 2,
+                        }, row)
+
+                        -- POSITION
+                        create("TextLabel", {
+                            BackgroundTransparency = 1,
+                            Position = UDim2.fromOffset(108, 0),
+                            Size = UDim2.fromOffset(148, 22),
+                            Text = string.format(
+                                "%d, %d, %d",
+                                math.floor(point.position.X),
+                                math.floor(point.position.Y),
+                                math.floor(point.position.Z)
+                            ),
+                            TextColor3 = Color3.fromRGB(150, 150, 150),
+                            TextSize = 11,
+                            FontFace = fontFace,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            ZIndex = 2,
+                        }, row)
+
+                        -- AREA (gate location, editable)
+                        local areaBox = create("TextBox", {
+                            Position = UDim2.fromOffset(256, 2),
+                            Size = UDim2.fromOffset(114, 18),
+                            BackgroundColor3 = background,
+                            BorderSizePixel = 0,
+                            Text = point.gate_location or "-",
+                            TextColor3 = Color3.fromRGB(122, 220, 122),
+                            TextSize = 11,
+                            FontFace = fontFace,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            ClearTextOnFocus = false,
+                            ZIndex = 3,
+                        }, row)
+                        create("UICorner", { CornerRadius = UDim.new(0, 3) }, areaBox)
+                        create("UIPadding", {
+                            PaddingLeft = UDim.new(0, 4),
+                            PaddingRight = UDim.new(0, 4),
+                        }, areaBox)
+
+                        -- OPTIONS (wait time, editable)
+                        local optionBox = create("TextBox", {
+                            Position = UDim2.fromOffset(374, 2),
+                            Size = UDim2.fromOffset(114, 18),
+                            BackgroundColor3 = background,
+                            BorderSizePixel = 0,
+                            Text = tostring(point.wait_time or 0),
+                            TextColor3 = fontColor,
+                            TextSize = 11,
+                            FontFace = fontFace,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            ClearTextOnFocus = false,
+                            ZIndex = 3,
+                        }, row)
+                        create("UICorner", { CornerRadius = UDim.new(0, 3) }, optionBox)
+                        create("UIPadding", {
+                            PaddingLeft = UDim.new(0, 4),
+                            PaddingRight = UDim.new(0, 4),
+                        }, optionBox)
+
+                        areaBox.FocusLost:Connect(function()
+                            local text = areaBox.Text
+                            if text == "-" then
+                                text = ""
+                            end
+
+                            if text and text ~= "" then
+                                point.gate_location = text
+                                point.is_gate_point = true
+                            else
+                                point.gate_location = nil
+                                point.is_gate_point = false
+                            end
+
+                            render_rows()
+                            update_visualizations()
+                        end)
+
+                        optionBox.FocusLost:Connect(function()
+                            point.wait_time = tonumber(optionBox.Text) or 0
+                            render_rows()
+                            update_visualizations()
+                        end)
+
+                        -- ACTIONS
+                        local function action_button(text, x, color, callback)
+                            local button = create("TextButton", {
+                                Position = UDim2.fromOffset(x, 2),
+                                Size = UDim2.fromOffset(26, 18),
+                                BackgroundColor3 = background,
+                                BorderSizePixel = 0,
+                                Text = text,
+                                TextColor3 = color or fontColor,
+                                TextSize = 11,
+                                FontFace = fontFace,
+                                AutoButtonColor = false,
+                                ZIndex = 4,
+                            }, row)
+                            create("UICorner", { CornerRadius = UDim.new(0, 3) }, button)
+                            button.MouseButton1Click:Connect(callback)
+                            return button
+                        end
+
+                        action_button("^", 492, nil, function()
+                            if index <= 1 then
+                                return
+                            end
+                            reorder(index, index - 1)
+                            render_rows()
+                            update_visualizations()
+                        end)
+
+                        action_button("v", 520, nil, function()
+                            if index >= #points then
+                                return
+                            end
+                            reorder(index, index + 1)
+                            render_rows()
+                            update_visualizations()
+                        end)
+
+                        action_button("X", 548, Color3.fromRGB(255, 120, 120), function()
+                            table.remove(points, index)
+
+                            if editor.selected == index then
+                                editor.selected = nil
+                            elseif editor.selected and editor.selected > index then
+                                editor.selected = editor.selected - 1
+                            end
+
+                            render_rows()
+                            update_visualizations()
+                        end)
+                    end
+                end
+
+                --// Toolbar actions \\--
+                local function current_point()
+                    local points = get_points()
+                    local index = editor.selected
+                    if not index or not points[index] then
+                        return nil, nil
+                    end
+                    return points[index], index
+                end
+
+                local function insert_after_selection(template)
+                    local points = get_points()
+                    local at = (editor.selected or #points) + 1
+                    table.insert(points, at, template)
+                    editor.selected = at
+                    render_rows()
                     update_visualizations()
-                    library:Notify("New blank path. Use Create Point in Botting or Insert Point At End here.")
+                    return at
+                end
+
+                toolbar_button(leftBar, "+ Add @ Me", 74, 1, function()
+                    local character = plr.Character
+                    local hrp = character and FindFirstChild(character, "HumanoidRootPart")
+                    if not hrp then
+                        library:Notify("Character not found!")
+                        return
+                    end
+
+                    local at = insert_after_selection({
+                        position = hrp.Position,
+                        wait_for_trinket = false,
+                        wait_time = 0,
+                        is_gate_point = false,
+                    })
+                    library:Notify(string.format("Added point %d", at))
+                end)
+
+                toolbar_button(leftBar, "+ Action", 62, 2, function()
+                    local character = plr.Character
+                    local hrp = character and FindFirstChild(character, "HumanoidRootPart")
+                    if not hrp then
+                        library:Notify("Character not found!")
+                        return
+                    end
+
+                    local at = insert_after_selection({
+                        position = hrp.Position,
+                        wait_for_trinket = false,
+                        wait_time = 1,
+                        is_gate_point = false,
+                    })
+                    library:Notify(string.format("Added action point %d (waits 1s)", at))
+                end)
+
+                toolbar_button(leftBar, "Copy", 44, 3, function()
+                    local point, index = current_point()
+                    if not point then
+                        library:Notify("Select a point first (click the # column)")
+                        return
+                    end
+
+                    editor.clipboard = {
+                        position = point.position,
+                        wait_for_trinket = point.wait_for_trinket or false,
+                        wait_time = point.wait_time or 0,
+                        is_gate_point = point.is_gate_point or false,
+                        gate_location = point.gate_location,
+                    }
+                    library:Notify(string.format("Copied point %d", index))
+                end)
+
+                toolbar_button(leftBar, "Paste", 46, 4, function()
+                    if not editor.clipboard then
+                        library:Notify("Nothing copied yet")
+                        return
+                    end
+
+                    local at = insert_after_selection({
+                        position = editor.clipboard.position,
+                        wait_for_trinket = editor.clipboard.wait_for_trinket,
+                        wait_time = editor.clipboard.wait_time,
+                        is_gate_point = editor.clipboard.is_gate_point,
+                        gate_location = editor.clipboard.gate_location,
+                    })
+                    library:Notify(string.format("Pasted point at %d", at))
+                end)
+
+                toolbar_button(rightBar, "Test", 44, 1, function()
+                    run_path(true)
+                end)
+
+                toolbar_button(rightBar, "Refresh", 58, 2, function()
+                    render_rows()
+                end)
+
+                toolbar_button(rightBar, "Save", 44, 3, function()
+                    save_current_path()
+                end)
+
+                closeButton.MouseButton1Click:Connect(function()
+                    window.Visible = false
+                end)
+
+                editor.window = window
+                render_rows()
+                return window
+            end
+
+            --// Path Files groupbox (bottom of the Bot Path tab) \\--
+            local group_path_files = Tabs.Botting:AddRightGroupbox("Path Files")
+
+            group_path_files:AddButton({
+                Text = "Open Path Editor",
+                Tooltip = "Opens the floating path editor window",
+                Func = function()
+                    local window = build_window()
+                    if window then
+                        window.Visible = true
+                        render_rows()
+                    end
                 end
             })
 
             group_path_files:AddButton({
-                Text = "Save Path",
+                Text = "Save Current Path",
                 Func = function()
-                    local path_name = Options.PathEditorName and Options.PathEditorName.Value or ""
-                    if not path_name or path_name == "" then
-                        library:Notify("Enter a path name first")
+                    save_current_path()
+                end
+            })
+
+            group_path_files:AddDivider()
+
+            group_path_files:AddButton({
+                Text = "Duplicate Selected Path",
+                DoubleClick = true,
+                Func = function()
+                    local source = Options.SavedPaths and Options.SavedPaths.Value
+                    local target = Options.PathName and Options.PathName.Value or ""
+
+                    if not source or source == "" then
+                        library:Notify("Select a saved path first")
                         return
                     end
-
-                    local points = get_points()
-                    if #points == 0 then
-                        library:Notify("No points to save")
+                    if not target or target == "" or target == source then
+                        library:Notify("Enter a new name in Path Name")
                         return
                     end
-
                     if not writefile then
                         library:Notify("writefile not supported!")
                         return
                     end
 
-                    if (not isfolder) or (not isfolder(POINTS_FOLDER)) then
-                        if makefolder then makefolder(POINTS_FOLDER) end
-                    end
-
-                    local serialized_points = {}
-                    for _, point in ipairs(points) do
-                        table.insert(serialized_points, {
-                            x = point.position.X,
-                            y = point.position.Y,
-                            z = point.position.Z,
-                            wait_for_trinket = point.wait_for_trinket or false,
-                            wait_time = point.wait_time or 0,
-                            is_gate_point = point.is_gate_point or false,
-                            gate_location = point.gate_location,
-                        })
-                    end
-
-                    local file_path = POINTS_FOLDER .. "/" .. path_name .. ".json"
-                    local existed = isfile and isfile(file_path)
-
-                    -- Keep any existing settings block intact when overwriting.
-                    local settings = nil
-                    if existed and readfile then
-                        local ok, decoded = pcall(function()
-                            return httpService:JSONDecode(readfile(file_path))
-                        end)
-                        if ok and decoded and decoded.settings then
-                            settings = decoded.settings
-                        end
-                    end
-
-                    local save_data = { points = serialized_points, settings = settings }
-
-                    local success, err = pcall(function()
-                        writefile(file_path, httpService:JSONEncode(save_data))
-                    end)
-
-                    if success then
-                        refresh_saved_paths()
-                        library:Notify(string.format("%s path '%s' with %d points", existed and "Overwrote" or "Saved", path_name, #points))
-                    else
-                        library:Notify("Failed to save path: " .. tostring(err))
-                    end
-                end
-            })
-
-            group_path_files:AddButton({
-                Text = "Load Path",
-                Func = function()
-                    local path_name = Options.PathEditorSavedPaths and Options.PathEditorSavedPaths.Value
-                        or (Options.PathEditorName and Options.PathEditorName.Value)
-                    if not path_name or path_name == "" then
-                        library:Notify("Select or name a path to load")
+                    if not load_path_by_name(source) then
                         return
                     end
 
-                    if load_path_by_name(path_name) then
-                        path_editor.selected_index = nil
-                        refresh_points_dropdown()
-                    end
-                end
-            })
-
-            group_path_files:AddButton({
-                Text = "Duplicate Path",
-                Func = function()
-                    local src = Options.PathEditorSavedPaths and Options.PathEditorSavedPaths.Value
-                    local dst = Options.PathEditorName and Options.PathEditorName.Value or ""
-                    if not src or src == "" then
-                        library:Notify("Select a path to duplicate")
-                        return
-                    end
-                    if not dst or dst == "" or dst == src then
-                        library:Notify("Enter a new name for the copy")
-                        return
-                    end
-
-                    if load_path_by_name(src) then
-                        local points = cheat_client.trinket_bot and cheat_client.trinket_bot.path_points or {}
-                        local file_path = POINTS_FOLDER .. "/" .. dst .. ".json"
-                        local success, err = pcall(function()
-                            writefile(file_path, httpService:JSONEncode({ points = (function()
-                                local out = {}
-                                for _, point in ipairs(points) do
-                                    table.insert(out, {
-                                        x = point.position.X,
-                                        y = point.position.Y,
-                                        z = point.position.Z,
-                                        wait_for_trinket = point.wait_for_trinket or false,
-                                        wait_time = point.wait_time or 0,
-                                        is_gate_point = point.is_gate_point or false,
-                                        gate_location = point.gate_location,
-                                    })
-                                end
-                                return out
-                            end)() }))
-                        end)
-
-                        if success then
-                            refresh_saved_paths()
-                            library:Notify(string.format("Duplicated '%s' to '%s'", src, dst))
-                        else
-                            library:Notify("Failed to duplicate: " .. tostring(err))
-                        end
-                    end
-                end
-            })
-
-            group_path_files:AddButton({
-                Text = "Rename Selected",
-                Func = function()
-                    local src = Options.PathEditorSavedPaths and Options.PathEditorSavedPaths.Value
-                    local dst = Options.PathEditorName and Options.PathEditorName.Value or ""
-                    if not src or src == "" then
-                        library:Notify("Select a path to rename")
-                        return
-                    end
-                    if not dst or dst == "" or dst == src then
-                        library:Notify("Enter the new name")
-                        return
-                    end
-                    if not delfile then
-                        library:Notify("delfile not supported!")
-                        return
-                    end
-
-                    local src_path = POINTS_FOLDER .. "/" .. src .. ".json"
-                    local dst_path = POINTS_FOLDER .. "/" .. dst .. ".json"
-                    local ok = pcall(function()
-                        writefile(dst_path, readfile(src_path))
-                        delfile(src_path)
+                    ensure_folder()
+                    local ok, err = pcall(function()
+                        writefile(
+                            POINTS_FOLDER .. "/" .. target .. ".json",
+                            httpService:JSONEncode({ points = serialize_points(get_points()) })
+                        )
                     end)
 
                     if ok then
                         refresh_saved_paths()
-                        Options.PathEditorSavedPaths:SetValue(dst)
-                        library:Notify(string.format("Renamed '%s' to '%s'", src, dst))
+                        library:Notify(string.format("Duplicated '%s' to '%s'", source, target))
+                    else
+                        library:Notify("Failed to duplicate: " .. tostring(err))
+                    end
+                end
+            })
+
+            group_path_files:AddButton({
+                Text = "Rename Selected Path",
+                DoubleClick = true,
+                Func = function()
+                    local source = Options.SavedPaths and Options.SavedPaths.Value
+                    local target = Options.PathName and Options.PathName.Value or ""
+
+                    if not source or source == "" then
+                        library:Notify("Select a saved path first")
+                        return
+                    end
+                    if not target or target == "" or target == source then
+                        library:Notify("Enter the new name in Path Name")
+                        return
+                    end
+                    if not readfile or not delfile then
+                        library:Notify("readfile/delfile not supported!")
+                        return
+                    end
+
+                    local ok = pcall(function()
+                        writefile(
+                            POINTS_FOLDER .. "/" .. target .. ".json",
+                            readfile(POINTS_FOLDER .. "/" .. source .. ".json")
+                        )
+                        delfile(POINTS_FOLDER .. "/" .. source .. ".json")
+                    end)
+
+                    if ok then
+                        refresh_saved_paths()
+                        library:Notify(string.format("Renamed '%s' to '%s'", source, target))
                     else
                         library:Notify("Failed to rename path")
                     end
                 end
             })
-
-            group_path_files:AddButton({
-                Text = "Delete Selected Path",
-                DoubleClick = true,
-                Func = function()
-                    local path_name = Options.PathEditorSavedPaths and Options.PathEditorSavedPaths.Value
-                    if not path_name or path_name == "" then
-                        library:Notify("Select a path to delete")
-                        return
-                    end
-                    if not delfile then
-                        library:Notify("delfile not supported!")
-                        return
-                    end
-
-                    local ok = pcall(function()
-                        delfile(POINTS_FOLDER .. "/" .. path_name .. ".json")
-                    end)
-
-                    if ok then
-                        refresh_saved_paths()
-                        Options.PathEditorSavedPaths:SetValue(nil)
-                        library:Notify(string.format("Deleted path '%s'", path_name))
-                    else
-                        library:Notify("Failed to delete path")
-                    end
-                end
-            })
-
-            group_path_files:AddButton({
-                Text = "Refresh Saved Paths",
-                Func = function()
-                    refresh_saved_paths()
-                    library:Notify("Reloaded saved paths")
-                end
-            })
-
-            --// Right lower: run / debug \\--
-            group_path_run:AddToggle("PathVisualizePoints", {
-                Text = "Show Point Markers",
-                Default = true,
-                Callback = function(state)
-                    if cheat_client.trinket_bot then
-                        cheat_client.trinket_bot.visualize_enabled = state
-                        update_visualizations()
-                    end
-                    if Toggles.VisualizePoints and Toggles.VisualizePoints.Value ~= state then
-                        Toggles.VisualizePoints:SetValue(state)
-                    end
-                end
-            })
-
-            group_path_run:AddButton({
-                Text = "Run Path (test)",
-                Tooltip = "Runs this path locally for testing. Requires Blatant Mode.",
-                Func = function()
-                    run_path(true)
-                end
-            })
-
-            group_path_run:AddButton({
-                Text = "Run Path (real)",
-                Tooltip = "Starts the path as a real botting run. Requires Blatant Mode.",
-                Func = function()
-                    run_path(false)
-                end
-            })
-
-            group_path_run:AddButton({
-                Text = "Stop Bot",
-                Func = function()
-                    if cheat_client.trinket_bot and cheat_client.trinket_bot.path_running then
-                        cheat_client.trinket_bot.path_running = false
-                        library:Notify("Bot stop requested")
-                    else
-                        library:Notify("Bot is not running")
-                    end
-                end
-            })
-
-            group_path_run:AddLabel("Auto refresh point list")
-            group_path_run:AddToggle("PathAutoRefresh", {
-                Text = "Auto Refresh (3s)",
-                Default = false,
-                Callback = function(state)
-                    if state then
-                        task.spawn(function()
-                            while Toggles.PathAutoRefresh and Toggles.PathAutoRefresh.Value
-                                and shared and not shared.is_unloading do
-                                pcall(refresh_points_dropdown)
-                                task.wait(3)
-                            end
-                        end)
-                    end
-                end
-            })
-
-            task.defer(function()
-                refresh_points_dropdown()
-                refresh_saved_paths()
-            end)
         end
 
         do

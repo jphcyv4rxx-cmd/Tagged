@@ -80,10 +80,12 @@ The user is rebranding it to "Tagged" and improving the UI.
 - Key locations in `Tagged`:
   - Theme table w/ accent: search `accent = Color3.fromRGB(0,199,192)` (~line 364).
   - `utility:ChangeAccent(accentColor)`: ~line 2328 — updates `shared.accents` drawings.
-  - `applyAccent(color)` helper: defined near the theme table; used by the picker.
-  - Window creation (`library:CreateWindow`): ~line 7450. `DisableSearch = false` there
+  - `applyAccent(color)` helper: ~line 7430; used by the picker.
+  - Window creation (`library:CreateWindow`): ~line 7445. `DisableSearch = false` there
     means the search bar is ENABLED.
-  - Path Editor tab block: `--// Path Editor \\--` (~line 19676).
+  - Tabs: `Bot Path` (bot), `Macros`, `Interface`, `Config` — no separate Path Editor tab.
+  - Bot Path block (floating path editor + Path Files groupbox):
+    `--// Bot Path — path files + floating path editor \\--` (~line 19677).
   - `cheat_client.path_api` bridge: end of the trinket-bot block (~line 18458).
 
 ## Current state
@@ -97,9 +99,14 @@ The user is rebranding it to "Tagged" and improving the UI.
 - **Leaderboard stealth COMPLETE** (2026-10-22): `neutral_leaderboard` toggle in
   Visuals ▸ Overlays — Hides the class/observe colours on the leaderboard and shows
   plain white names; right-click observe + hover class readout still work.
-- **Path Editor COMPLETE** (2026-10-22): dedicated `Path Editor` tab (points list,
-  edit point, path file save/load/duplicate/rename/delete, run/stop, auto-refresh).
-  Reuses the trinket bot via `cheat_client.path_api`.
+- **Path Editor COMPLETE** (2026-10-22): the botting tabs are merged into a single
+  **`Bot Path`** tab (old `Botting` + `Path Editor` tabs are gone). A `Path Files`
+  groupbox sits at the bottom of that tab and has the **Open Path Editor** button, which
+  opens a floating, draggable path-editor window (own ScreenGui, DisplayOrder 2000).
+  The window is a table: `#`, `TYPE`, `POSITION`, `AREA`, `OPTIONS`, `ACTIONS`, with
+  `+ Add @ Me`, `+ Action`, `Copy`, `Paste`, `Test`, `Refresh`, `Save`, and per-row
+  `^` / `v` / `X` to reorder and delete points. AREA = gate location (type one to make it
+  a gate point), OPTIONS = wait seconds. Visualise Points toggle lives in Trinket Bot.
 - All changes syntax-validated with the Luau compiler; in-game test still pending.
 
 ## TODO / next steps (in order)

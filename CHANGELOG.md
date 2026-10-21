@@ -203,3 +203,33 @@ survives across devices — a new session reads this to see what's already done.
 - **Status:** done (Luau-validated)
 - **Next:** reload in-game and confirm the Interface tab renders, then exercise the
   Path Editor point selection.
+
+## [2026-10-22] Merge Botting + Path Editor into "Bot Path" and add floating path editor
+- **File(s):** `Tagged`
+- **What changed:** Restructured the botting UI per the user's screenshot/reference.
+  - **Tabs merged.** The old `Botting` and `Path Editor` tabs are now a single tab named
+    **`Bot Path`** (icon `bot`). `Tabs.PathEditor` is gone entirely.
+  - **Path Files relocated.** File management now lives in a `Path Files` groupbox at the
+    **bottom of the Bot Path tab** (right column, below Trinket Bot Config and Looping
+    Settings) — it reuses the existing `PathName` / `SavedPaths` options instead of
+    creating duplicate inputs. It holds: Open Path Editor, Save Current Path, Duplicate
+    Selected Path, Rename Selected Path.
+  - **Floating path editor window** matching the reference shot: its own `ScreenGui`
+    (`TaggedPathEditorGui`, `DisplayOrder = 2000`, `IgnoreGuiInset`, `ResetOnSpawn =
+    false`, parented to `ui`/`gethui` with a PlayerGui fallback) so it always draws above
+    the library UI — no ZIndex fighting. Accent header with the live point count
+    `path editor (N)`, an `X` to close, and the header is the drag handle.
+  - **Toolbar:** `+ Add @ Me`, `+ Action` (adds a 1s wait point), `Copy`, `Paste` on the
+    left; `Test`, `Refresh`, `Save` on the right.
+  - **Table:** `#`, `TYPE`, `POSITION`, `AREA`, `OPTIONS`, `ACTIONS`. Click the `#` cell
+    to select a row (accent outline). `TYPE` shows `POINT` or `GATE` (gate points are
+    yellow). `AREA` is an editable TextBox for the gate location (typing one marks the
+    point as a gate). `OPTIONS` is an editable TextBox for the wait time in seconds.
+    `ACTIONS` has `^` / `v` to move a point earlier/later and `X` to delete it, all of
+    which re-render and refresh the 3D point markers.
+  - **Visualise Points kept** in the Trinket Bot groupbox (now inside Bot Path).
+  - Adding points inserts after the current selection (or appends), so building a route
+    in order is straightforward.
+- **Status:** done (Luau-validated)
+- **Next:** in-game check — open the editor from `Path Files`, add/reorder/delete points,
+  confirm the markers update and Save round-trips.
