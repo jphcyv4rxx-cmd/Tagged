@@ -292,3 +292,31 @@ survives across devices — a new session reads this to see what's already done.
 - **Next:** in-game pass — drag the editor, reload to confirm the accent/font stick,
   swap fonts and check every tab, add a LUA + TALK point to a throwaway path, and watch
   the Gorpig log while botting.
+
+## [2026-10-22] Add a Roblox Studio UI preview harness (test the UI with no executor)
+- **File(s):** `tests/ui_preview.client.lua` (new), `tests/studio_install.lua` (new),
+  `tests/README.md` (new)
+- **What changed:** Executors were down, so added a way to exercise the UI in plain
+  Roblox Studio. It does **not** run `Tagged` (that returns early unless
+  `game.PlaceId` is Rogue Lineage, and blocks on `WaitForChild("AreaMarkers")` /
+  `ReplicatedStorage.Requests`, so it hangs in a baseplate). Instead:
+  - `tests/studio_install.lua` — one command-bar paste. Fetches
+    `backup/DEPENDENCIES/Library.lua` from this repo into a `ReplicatedStorage
+    .TaggedLibrary` ModuleScript, and `tests/ui_preview.client.lua` into
+    `StarterPlayerScripts.TaggedUIPreview`, then you just press Play. Re-running it
+    refreshes both.
+  - `tests/ui_preview.client.lua` — requires the real library, runs the same
+    `SetDPIScale(90)` → `CreateWindow{640x520}` setup as `Tagged`, and rebuilds the
+    changed UI: Bot Path (Trinket Bot subset incl. `Gorpig Proximity`, Gorpig Detector
+    with a fake detection every 2s to test the wrapped log, Path Files), Interface (UI
+    Settings: accent picker / font dropdown / scale slider / accent top bar, plus a
+    widget reference sheet), and a floating path editor that reuses the **same
+    `RenderStepped` + `GetMouseLocation()` delta drag**, the `+ Action` popup, the
+    colour-coded TYPE column and the `refresh_theme` rebuild on accent/font change.
+  - `tests/README.md` — setup steps, what is and isn't covered, and a manual fallback
+    if Studio refuses `Source` assignment (paste Library.lua into the ModuleScript).
+  - Known gap: bot logic, `Drawing` ESP, remotes and `writefile`/`readfile` still need
+    an executor; the preview's Save is a no-op.
+- **Status:** done (both files Luau-validated)
+- **Next:** run the harness once in Studio to confirm the drag/accent/font behaviour,
+  then repeat the in-game pass when an executor is back.

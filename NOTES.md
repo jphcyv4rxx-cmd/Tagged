@@ -52,6 +52,12 @@ The user is rebranding it to "Tagged" and improving the UI.
 - `AGENTS.md` — rules for ANY AI agent (auto-read by coding tools). Tells every AI to
   read the memory files, auto-commit + push, and respect the hard constraints.
 - `README.md` — shows the loadstring + hosting explanation + pointers to the memory files.
+- `tests/` — **UI preview harness for Roblox Studio** (no executor needed).
+  `tests/studio_install.lua` is a one-shot command-bar paste that installs
+  `ReplicatedStorage.TaggedLibrary` + `StarterPlayerScripts.TaggedUIPreview` from this
+  repo; `tests/ui_preview.client.lua` rebuilds the changed UI (Bot Path subset, Gorpig
+  log, UI Settings, floating path editor with the same drag technique).
+  See `tests/README.md`. It does NOT run bot logic/ESP/files.
 
 ## Runtime files (executor side, NOT in this repo)
 - `Tagged/ui_state.json` — persisted UI prefs: `accent` (hex), `font` (Enum.Font name),
@@ -153,6 +159,7 @@ The user is rebranding it to "Tagged" and improving the UI.
 - [ ] 5. In-game test pass on the executor: accent-bar drag, font changer, neutral
        leaderboard, Path Editor save/load round-trip, smooth editor drag, accent/font
        persistence across reload, LUA + TALK points, Gorpig log while botting.
+       (While executors are down, use `tests/` in Roblox Studio for the UI half.)
 - [x] 6. Add a `LUA` point type to the Path Editor, per the spec the user dropped in
        `lua-action.md` (runs a Lua file from `Tagged/trinket_paths/lua/`). ✅ DONE
        (2026-10-22) plus `TALK` / `EQUIP` / `WAIT` / `L-CLICK` / `R-CLICK`.
